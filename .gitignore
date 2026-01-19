@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Streamlit
+.streamlit/
+
+# Virtual environments
+venv/
