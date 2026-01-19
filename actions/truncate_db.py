@@ -6,6 +6,5 @@ class TruncateDDRAction:
 
     def execute(self):
         with self.engine.begin() as conn:
-            conn.execute(
-                text("TRUNCATE TABLE ddr_documents RESTART IDENTITY;")
-            )
+            # The CASCADE keyword is the most robust way to handle multiple foreign keys
+            conn.execute(text("TRUNCATE TABLE ddr_documents RESTART IDENTITY CASCADE;"))
