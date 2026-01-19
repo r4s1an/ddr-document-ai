@@ -1,0 +1,11 @@
+from sqlalchemy import text
+
+class TruncateDDRAction:
+    def __init__(self, engine):
+        self.engine = engine
+
+    def execute(self):
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("TRUNCATE TABLE ddr_documents RESTART IDENTITY;")
+            )

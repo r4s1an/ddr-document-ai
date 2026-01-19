@@ -1,83 +1,55 @@
 import pdfplumber
-import re
-import sys
-import io
 
-# Force UTF-8 output for console (Æ, Ø, etc.)
-sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+def normalize_for_match(s):
+    return ''.join(s.split())
 
-# Your PDF path
-pdf_path = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000\15_9_F_10_2009_05_24.pdf"
-# We'll only process the first page
-metadata = {
-    "wellbore": None,
-    "period_start_date": None,
-    "period_start_time": None,
-    "period_end_date": None,
-    "period_end_time": None,
-    "report_number": None
+pdf_path = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000\15_9_F_14_2008_06_14.pdf"
+
+result = {
+    "summary_activities_24h": None,
+    "summary_planned_activities_24h": None,
 }
 
 with pdfplumber.open(pdf_path) as pdf:
-    if len(pdf.pages) == 0:
-        print("PDF has no pages!")
-        sys.exit()
+    for page in pdf.pages:
+        text = page.extract_text() or ""
+        if "summary report" not in text.lower():
+            continue
 
-    # Only first page
-    page = pdf.pages[0]
-    print("Processing first page only...")
+        lines = text.splitlines()
 
-    # Fix duplicated bold characters
-    deduped_page = page.dedupe_chars(tolerance=1)
+        activities_header = "Summary of activities (24 Hours)"
+        planned_header = "Summary of planned activities (24 Hours)"
+        activities_header_norm = normalize_for_match(activities_header)
+        planned_header_norm = normalize_for_match(planned_header)
 
-    # Get clean text
-    text = deduped_page.extract_text() or ""
+        activities_idx = None
+        planned_idx = None
+        for i, line in enumerate(lines):
+            line_norm = normalize_for_match(line)
+            if line_norm == activities_header_norm:
+                activities_idx = i
+            elif line_norm == planned_header_norm:
+                planned_idx = i
 
-    # ── Wellbore name ───────────────────────────────────────────────
-    well_match = re.search(r'(Wellbore\s*:\s*)?([\d/]+[A-Za-z\s-]*\d+[A-Za-z]?)', text, re.IGNORECASE)
-    if well_match and not metadata["wellbore"]:
-        metadata["wellbore"] = well_match.group(2).strip()
-        print(f"Found Wellbore: {metadata['wellbore']}")
+        if activities_idx is None or planned_idx is None:
+            continue
 
-    # ── Period with times (required format) ─────────────────────────
-    period_match = re.search(
-        r'Period:\s*'
-        r'(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*'
-        r'[-–—]\s*'
-        r'(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})',
-        text,
-        re.IGNORECASE
-    )
+        # Extract activities
+        activities_lines = lines[activities_idx + 1 : planned_idx]
+        result["summary_activities_24h"] = ' '.join(' '.join(activities_lines).split())
 
-    if period_match:
-        metadata["period_start_date"] = period_match.group(1)
-        metadata["period_start_time"] = period_match.group(2)
-        metadata["period_end_date"]   = period_match.group(3)
-        metadata["period_end_time"]   = period_match.group(4)
+        # Extract planned
+        next_idx = len(lines)
+        for j in range(planned_idx + 1, len(lines)):
+            clean_line = ' '.join(lines[j].split())
+            if clean_line.istitle() and len(clean_line.split()) > 1:
+                next_idx = j
+                break
 
-        print(f"Period start: {metadata['period_start_date']} {metadata['period_start_time']}")
-        print(f"Period end:   {metadata['period_end_date']} {metadata['period_end_time']}")
-    else:
-        print("Period not found or format is different")
+        planned_lines = lines[planned_idx + 1 : next_idx]
+        result["summary_planned_activities_24h"] = ' '.join(' '.join(planned_lines).split())
 
-    # ── Report number ───────────────────────────────────────────────
-    report_match = re.search(
-        r'Report\s*(?:number|#)\s*[:=]\s*(\d+)',
-        text,
-        re.IGNORECASE
-    )
-    if report_match:
-        metadata["report_number"] = report_match.group(1)
-        print(f"Report number: {metadata['report_number']}")
+        break
 
-# ── Final clean summary ─────────────────────────────────────────────
-print("\n" + "═" * 60)
-print("EXTRACTED METADATA (first page only)")
-print("═" * 60)
-print(f"Wellbore          : {metadata['wellbore'] or 'Not found'}")
-print(f"Period start      : {metadata['period_start_date'] or 'Not found'} "
-      f"{metadata['period_start_time'] or ''}".strip())
-print(f"Period end        : {metadata['period_end_date'] or 'Not found'} "
-      f"{metadata['period_end_time'] or ''}".strip())
-print(f"Report number     : {metadata['report_number'] or 'Not found'}")
-print("═" * 60)
+print(result)
