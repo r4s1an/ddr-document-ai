@@ -1,16 +1,3 @@
-"""
-Auto-annotation dataset builder for DDR PDFs (YOLO format)
-
-Creates:
-dataset/
-  images/train/*.png
-  labels/train/*.txt
-(and optionally dataset/debug/*.png)
-
-You can add more "detectors" by writing a function that returns
-a list of (class_name, pdf_bbox) where pdf_bbox is (x0, top, x1, bottom) in PDF points.
-"""
-
 from __future__ import annotations
 from PIL import Image
 import re
@@ -26,7 +13,7 @@ from pdf2image import convert_from_path
 # CONFIG
 # ---------------------------
 
-PDF_PATH = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000\15_9_19_A_1997_08_09.pdf"
+PDF_PATH = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000\15_9_19_A_1980_01_01.pdf"
 POPPLER_BIN = r"C:\Users\Yoked\Desktop\DDR Processor\poppler-25.12.0\Library\bin"
 DPI = 320
 
@@ -116,53 +103,59 @@ def _expand_bbox(pdf_bbox: PdfBBox, page_w: float, page_h: float, padding: float
     print(f"Original width: {x1-x0:.2f} | Padding: {padding} | New width: {(x1+padding)-(x0-padding):.2f}")
     return (x0, top, x1, bottom)
 
-
 def find_line_segment_bbox(
     page: pdfplumber.page.Page,
     start_pattern: str,
     stop_pattern: Optional[str] = None,
-    y_tol: float = 3.0,
+    y_tol: float = 4.0,
     padding: float = 1,
     flags=re.IGNORECASE,
 ) -> Optional[PdfBBox]:
-    """
-    Find a bbox for a line segment that starts at a token matching start_pattern
-    and optionally stops before token matching stop_pattern.
-
-    Returns bbox in PDF points: (x0, top, x1, bottom) or None.
-    """
-    # dedupe helps with duplicated characters
-    words = extract_words_clean(page, tol=2.5, extra_attrs=["size", "fontname"])
-
-    # find start token
+    words = extract_words_clean(page)
+    
+    # DEBUG: Print first few words
+    print(f"\n=== Searching for '{start_pattern}' ===")
+    for w in words[:10]:
+        print(f"  '{w['text']}' at x0={w['x0']:.1f}")
+    
     start_idx = None
     start_re = re.compile(start_pattern, flags=flags)
     for i, w in enumerate(words):
-        if start_re.fullmatch(w["text"]):
+        if start_re.search(w["text"]):
             start_idx = i
+            print(f"✓ Found start word: '{w['text']}' at index {i}")
             break
+    
     if start_idx is None:
+        print("✗ Start pattern not found")
         return None
-
-    line_top = words[start_idx]["top"]
-    line_words = _same_line_words(words, anchor_top=line_top, y_tol=y_tol)
-
-    # establish stop x if needed
-    stop_x = None
+    
+    anchor_word = words[start_idx]
+    line_words = _same_line_words(words, anchor_top=anchor_word["top"], y_tol=y_tol)
+    line_words = sorted(line_words, key=lambda x: x["x0"])
+    
+    print(f"Line has {len(line_words)} words:")
+    for w in line_words:
+        print(f"  '{w['text']}' at x0={w['x0']:.1f}")
+    
+    stop_x = page.width
     if stop_pattern:
         stop_re = re.compile(stop_pattern, flags=flags)
         for w in line_words:
-            if stop_re.fullmatch(w["text"]):
+            if w["x0"] > anchor_word["x0"] and stop_re.search(w["text"]):
                 stop_x = w["x0"]
+                print(f"✓ Found stop word: '{w['text']}' at x0={stop_x:.1f}")
                 break
-
-    start_x = words[start_idx]["x0"]
-
+    
     seg = [
         w for w in line_words
-        if w["x0"] >= start_x and (stop_x is None or w["x1"] <= stop_x)
+        if w["x0"] >= anchor_word["x0"] and w["x1"] <= stop_x
     ]
+    
+    print(f"Segment has {len(seg)} words")
+    
     if not seg:
+        print("✗ Empty segment!")
         return None
 
     x0 = min(w["x0"] for w in seg)
@@ -170,9 +163,8 @@ def find_line_segment_bbox(
     top = min(w["top"] for w in seg)
     bottom = max(w["bottom"] for w in seg)
 
-    bbox = (x0, top, x1, bottom)
-    bbox = _expand_bbox(bbox, page.width, page.height, padding=padding)
-    return bbox
+    return _expand_bbox((x0, top, x1, bottom), page.width, page.height, padding=padding)
+
 
 def group_words_into_lines(words: List[dict], y_tol: float = 3.0) -> List[List[dict]]:
     """
@@ -347,8 +339,6 @@ def is_runaway_table_bbox(page: pdfplumber.page.Page, bbox: PdfBBox) -> bool:
     # touches edges OR covers most of page height
     return (top <= 1.0) or (bottom >= page.height - 1.0) or (h >= 0.70 * page.height)
 
-def filter_words_in_y(words: List[dict], y0: float, y1: float) -> List[dict]:
-    return [w for w in words if (w["bottom"] >= y0 and w["top"] <= y1)]
 
 def build_columns(line_words: List[dict], col_gap: float = 12.0) -> List[Tuple[float, float]]:
     """Group multi-word headers into columns using small gap threshold."""
@@ -366,41 +356,31 @@ def build_columns(line_words: List[dict], col_gap: float = 12.0) -> List[Tuple[f
     cols.append((cur_x0, cur_x1))
     return cols
 
-def row_matches_columns(row_words: List[dict], cols: List[Tuple[float, float]], x_tol: float = 10.0, min_hits: int = 3) -> bool:
-    """Row is 'table-like' if words land in several header columns."""
-    if not cols or not row_words:
-        return False
-    hits = 0
-    for (cx0, cx1) in cols:
-        for w in row_words:
-            # word starts near column start OR intersects the column range
-            if abs(w["x0"] - cx0) <= x_tol or (w["x0"] < cx1 and w["x1"] > cx0):
-                hits += 1
-                break
-    return hits >= min_hits
-
-def is_data_row(text: str) -> bool:
-    t = text.strip()
-    return any(ch.isdigit() for ch in t) or (":" in t)
-
 def collapse_doubled_token(t: str) -> str:
+    original = t
     t = (t or "").strip()
-    # Collapse only if every char is doubled: TTii -> Ti
-    if len(t) >= 4 and len(t) % 2 == 0:
+    
+    if len(t) >= 2 and len(t) % 2 == 0:
         if all(t[i] == t[i+1] for i in range(0, len(t), 2)):
-            return t[::2]
+            result = t[::2]
+            if "elbore" in result.lower() or "ellbore" in original.lower():
+                print(f"COLLAPSE DEBUG: '{original}' -> '{result}'")
+                print(f"  Length: {len(original)}, pairs matched: {all(original[i] == original[i+1] for i in range(0, len(original), 2))}")
+            return result
     return t
 
 def extract_words_clean(page: pdfplumber.page.Page, tol: float = 2.5, extra_attrs=None) -> List[dict]:
     """
-    1) dedupe chars (reduces double-drawn glyphs)
-    2) collapse doubled tokens (TTiimmee -> Time)
+    Extract words and collapse doubled tokens.
+    NOTE: We do NOT use dedupe_chars here because it can create inconsistent results.
     """
     extra_attrs = extra_attrs or ["size", "fontname"]
-    p = page.dedupe_chars(tolerance=tol)
-    words = p.extract_words(extra_attrs=extra_attrs)
+    # Remove dedupe_chars - let collapse_doubled_token handle it
+    words = page.extract_words(extra_attrs=extra_attrs)
+    
     for w in words:
         w["text"] = collapse_doubled_token(w["text"])
+    
     return words
 
 def line_to_text(line_words: List[dict]) -> str:
@@ -443,76 +423,6 @@ def get_section_headers_with_titles(page: pdfplumber.page.Page, y_tol: float = 3
     return out
 
 
-def detect_one_row_tables_by_section(
-    page: pdfplumber.page.Page,
-    y_tol: float = 3.0,
-    col_gap: float = 12.0,
-    x_tol: float = 10.0,
-    padding: float = 2.0,
-) -> List[Detection]:
-    words_all = extract_words_clean(page, tol=2.5, extra_attrs=None)
-
-
-    headers = get_section_headers_with_titles(page, y_tol=y_tol, padding=2.5)
-    if not headers:
-        return []
-
-    dets: List[Detection] = []
-
-    for idx, (title, hb) in enumerate(headers):
-        if title not in ONE_ROW_SECTION_HINTS:
-            continue
-
-        y0 = hb[3] + 2.0
-        y1 = (headers[idx + 1][1][1] - 2.0) if idx + 1 < len(headers) else page.height
-
-        words = filter_words_in_y(words_all, y0, y1)
-        lines = group_words_into_lines(words, y_tol=y_tol)
-
-        hints = ONE_ROW_SECTION_HINTS[title]
-
-        # find header row by keywords
-        header_i = None
-        for i, ln in enumerate(lines):
-            txt = line_to_text(ln).lower()
-            if sum(1 for h in hints if h in txt) >= max(2, len(hints) - 1):
-                header_i = i
-                break
-        if header_i is None:
-            continue
-
-        # find next non-empty line as data row
-        data_i = None
-        for j in range(header_i + 1, min(header_i + 4, len(lines))):
-            txt = line_to_text(lines[j]).strip()
-            if txt:
-                data_i = j
-                break
-        if data_i is None:
-            continue
-
-        header_ln = lines[header_i]
-        data_ln = lines[data_i]
-
-        cols = build_columns(header_ln, col_gap=col_gap)
-        if not row_matches_columns(data_ln, cols, x_tol=x_tol, min_hits=3):
-            continue
-        if not is_data_row(line_to_text(data_ln)):
-            continue
-
-        bbox = _expand_bbox(
-            (
-                min(w["x0"] for w in header_ln + data_ln),
-                min(w["top"] for w in header_ln),
-                max(w["x1"] for w in header_ln + data_ln),
-                max(w["bottom"] for w in data_ln),
-            ),
-            page.width, page.height, padding=padding
-        )
-        dets.append(Detection("table", bbox))
-
-    return dets
-
 def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -> List[Detection]:
     p = page.dedupe_chars(tolerance=1)
 
@@ -535,7 +445,6 @@ def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -
     # run BOTH strategies always
     for settings in (
         dict(table_settings, vertical_strategy="lines", horizontal_strategy="lines"),
-        dict(table_settings, vertical_strategy="text",  horizontal_strategy="text"),
     ):
         try:
             for t in p.find_tables(table_settings=settings):
@@ -570,15 +479,11 @@ def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -
 
 
 def detect_wellbore_field(page: pdfplumber.page.Page) -> List[Detection]:
-    """
-    Detect bbox for 'Wellbore: ...' part.
-    We stop before 'Period:' if it exists on the same line.
-    """
     bbox = find_line_segment_bbox(
         page,
-        start_pattern=r"Wellbore:?",
-        stop_pattern=r"Period:?",
-        y_tol=3.0,
+        start_pattern=r"wellbore", # Simplified: just look for the word
+        stop_pattern=r"period",    # Look for the start of the next label
+        y_tol=4.0,                 # Keep it generous
         padding=1,
     )
     if bbox is None:
@@ -779,7 +684,6 @@ if __name__ == "__main__":
         detect_period_field,
         detect_section_headers,
         detect_tables_pdfplumber,
-        detect_one_row_tables_by_section,
     ]
 
     build_dataset_from_pdf(
