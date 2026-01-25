@@ -12,10 +12,21 @@ from services.ddr_metadata import parse_wellbore, parse_period
 from tables.utils import coerce_summary_payload
 from services.activity_summary_extractor import extract_activity_summaries_from_processed_ddr
 from tables.db_writes import (
-    upsert_ddr_document,
-    upsert_ddr_activity_summary,
-    update_report_number,
+    upsert_ddr_document,replace_ddr_operations_rows,
+    upsert_ddr_activity_summary, replace_ddr_survey_station_rows,
+    update_report_number,replace_ddr_drilling_fluid_rows,
+    replace_ddr_stratigraphic_information_rows,
+    replace_ddr_lithology_information_rows,
+    replace_ddr_gas_reading_information_rows
 )
+from services.table_ocr_orchestrator import run_paddle_for_all_tables
+from tables.drilling_fluid_parser import parse_drilling_fluid_rows
+from tables.operations_parser import parse_operations_rows
+from tables.survey_station_parser import parse_survey_station_rows
+from tables.stratigraphic_information_parser import parse_stratigraphic_information_rows
+from tables.lithology_information_parser import parse_lithology_information_rows
+from tables.gas_reading_information_parser import parse_gas_reading_information_rows
+
 @dataclass
 class IngestResult:
     document_id: int
@@ -41,11 +52,27 @@ class IngestDDRAction:
 
         def scan_page(pd: Path):
             data = json.loads((pd / "layout_ocr.json").read_text(encoding="utf-8"))
+            items = data.get("items") if isinstance(data, dict) else data
+            if not isinstance(items, list):
+                debug.setdefault("metadata_errors", []).append({"page": pd.name, "reason": "layout_ocr items not a list"})
+                return None, None
+
+            # DEBUG: record counts per page
+            debug.setdefault("metadata_page_counts", {})[pd.name] = {
+                "num_items": len(items),
+                "nonempty_ocr_text": sum(1 for it in items if (it.get("ocr_text") or "").strip()),
+                "labels": {
+                    "wellbore_field": sum(1 for it in items if it.get("label") == "wellbore_field"),
+                    "period_field": sum(1 for it in items if it.get("label") == "period_field"),
+                    "section_header": sum(1 for it in items if it.get("label") == "section_header"),
+                    "plain_text": sum(1 for it in items if it.get("label") == "plain_text"),
+                }
+            }
             # collect OCR text from wellbore_field + period_field first
-            wb_texts = [it.get("ocr_text","") for it in data["items"] if it["label"] == "wellbore_field"]
-            per_texts = [it.get("ocr_text","") for it in data["items"] if it["label"] == "period_field"]
-            # also allow fallback: search in all text on the page (headers/plain_text)
-            all_texts = [it.get("ocr_text","") for it in data["items"] if it.get("ocr_text")]
+            wb_texts = [it.get("ocr_text","") for it in items if it.get("label") == "wellbore_field"]
+            per_texts = [it.get("ocr_text","") for it in items if it.get("label") == "period_field"]
+            all_texts = [it.get("ocr_text","") for it in items if (it.get("ocr_text") or "").strip()]
+
 
             well = None
             period = None
@@ -273,7 +300,11 @@ class IngestDDRAction:
         period_start = period[0].isoformat() if period else None
         period_end   = period[1].isoformat() if period else None
 
-        # 3) insert document row first (without report_number)
+        # 3) run PaddleOCR for all tables ONCE (after all crops + layouts exist)
+        ocr_debug = run_paddle_for_all_tables(out_dir, debug=False, skip_if_exists=True)
+        debug["table_ocr"] = ocr_debug
+
+        # 4) insert document row first (without report_number)
         with self.engine.begin() as conn:
             # 3) Insert/Upsert document row
             doc_id = upsert_ddr_document(
@@ -286,6 +317,12 @@ class IngestDDRAction:
             )
             debug["doc_id"] = doc_id
 
+            # 4) Drilling Fluid table (can be split across pages)
+            df_rows = parse_drilling_fluid_rows(out_dir, document_id=doc_id)
+            replace_ddr_drilling_fluid_rows(conn, document_id=doc_id, rows=df_rows)
+
+            debug["drilling_fluid"] = {
+                "rows_inserted": len(df_rows),}
             # 4) Summary report (tables)
             self._upsert_summary_report(conn, out_dir, doc_id, debug)
 
@@ -296,13 +333,44 @@ class IngestDDRAction:
             report_number = debug.get("summary_report_payload", {}).get("report_number")
             if report_number is not None:
                 update_report_number(conn, document_id=doc_id, report_number=report_number)
+            
+            ops_rows = parse_operations_rows(out_dir, document_id=doc_id)
+            replace_ddr_operations_rows(conn, document_id=doc_id, rows=ops_rows)
 
-                # 4) Return once, after DB work is done
-                return IngestResult(
-                    doc_id,
-                    well,
-                    period_start,
-                    period_end,
-                    used_page,
-                    debug,  # already includes reused + summary status
-                )
+            debug["operations"] = {
+                "rows_inserted": len(ops_rows),}
+            
+            ss_rows = parse_survey_station_rows(out_dir, document_id=doc_id)
+            replace_ddr_survey_station_rows(conn, document_id=doc_id, rows=ss_rows)
+
+            debug["survey_station"] = {
+                "rows_inserted": len(ss_rows),}
+            
+            si_rows = parse_stratigraphic_information_rows(out_dir, document_id=doc_id)
+            replace_ddr_stratigraphic_information_rows(conn, document_id=doc_id, rows=si_rows)
+
+            debug["stratigraphic_information"] = {
+                "rows_inserted": len(si_rows),
+            }
+
+            li_rows = parse_lithology_information_rows(out_dir, document_id=doc_id)
+            replace_ddr_lithology_information_rows(conn, document_id=doc_id, rows=li_rows)
+
+            debug["lithology_information"] = {
+                "rows_inserted": len(li_rows),}
+            
+            gr_rows = parse_gas_reading_information_rows(out_dir, document_id=doc_id)
+            replace_ddr_gas_reading_information_rows(conn, document_id=doc_id, rows=gr_rows)
+
+            debug["gas_reading_information"] = {
+                "rows_inserted": len(gr_rows),
+            }
+
+        return IngestResult(
+            doc_id,
+            well,
+            period_start,
+            period_end,
+            used_page,
+            debug, 
+        )

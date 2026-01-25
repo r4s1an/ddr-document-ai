@@ -3,6 +3,9 @@ from pathlib import Path
 import cv2
 from pdf2image import convert_from_path, pdfinfo_from_path
 from doclayout_yolo import YOLOv10
+from typing import List, Tuple
+import json
+import tempfile
 
 POPPLER_BIN = r"C:\Users\Yoked\Desktop\DDR Processor\poppler-25.12.0\Library\bin"
 DPI = 320
@@ -18,6 +21,95 @@ CROP_LABELS = {
     "period_field", 
 }
 PRETRAINED_WEIGHTS = Path("models/doclayout_yolo_docstructbench_imgsz1024.pt")
+
+Box = Tuple[int, int, int, int]  # x1,y1,x2,y2
+
+def _area(b: Box) -> int:
+    x1, y1, x2, y2 = b
+    return max(0, x2 - x1) * max(0, y2 - y1)
+
+def _intersection(a: Box, b: Box) -> int:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    x1, y1 = max(ax1, bx1), max(ay1, by1)
+    x2, y2 = min(ax2, bx2), min(ay2, by2)
+    return max(0, x2 - x1) * max(0, y2 - y1)
+
+def _iou(a: Box, b: Box) -> float:
+    inter = _intersection(a, b)
+    if inter <= 0:
+        return 0.0
+    union = _area(a) + _area(b) - inter
+    return inter / union if union > 0 else 0.0
+
+def _inside_ratio(inner: Box, outer: Box) -> float:
+    inter = _intersection(inner, outer)
+    ain = _area(inner)
+    return (inter / ain) if ain > 0 else 0.0
+
+def dedupe_by_label(
+    dets: List[dict],
+    *,
+    iou_thresh: float = 0.85,
+    inside_thresh: float = 0.90,
+) -> List[dict]:
+    """
+    Deduplicate detections by label, preferring larger boxes when overlapping.
+    
+    Args:
+        dets: list of {"i": int, "label": str, "conf": float, "box": (x1,y1,x2,y2)}
+        iou_thresh: IoU threshold for considering boxes as duplicates
+        inside_thresh: Threshold for "mostly inside" detection
+    
+    Returns:
+        Filtered list with duplicates removed
+    """
+    out: List[dict] = []
+    
+    # Group by label
+    by_label: dict[str, List[dict]] = {}
+    for d in dets:
+        by_label.setdefault(d["label"], []).append(d)
+
+    for label, group in by_label.items():
+        # Sort by area (largest first), then by confidence
+        group = sorted(group, key=lambda d: (-_area(d["box"]), -d["conf"]))
+        
+        kept: List[dict] = []
+
+        for d in group:
+            drop = False
+            
+            for k in kept:
+                # Check if current box is mostly inside a kept box
+                inside_ratio = _inside_ratio(d["box"], k["box"])
+                if inside_ratio >= inside_thresh:
+                    drop = True
+                    break
+                
+                # Check if kept box is mostly inside current box
+                # (current is larger since we sorted by area)
+                inside_ratio_rev = _inside_ratio(k["box"], d["box"])
+                if inside_ratio_rev >= inside_thresh:
+                    # Remove the smaller kept box, keep current
+                    kept.remove(k)
+                    continue
+                
+                # Check IoU overlap
+                iou = _iou(d["box"], k["box"])
+                if iou >= iou_thresh:
+                    # Already sorted by size, so keep the larger one (already in kept)
+                    drop = True
+                    break
+            
+            if not drop:
+                kept.append(d)
+
+        out.extend(kept)
+
+    # Sort by position (top to bottom, left to right)
+    out = sorted(out, key=lambda d: (d["box"][1], d["box"][0]))
+    return out
 
 class ProcessDDRModel:
     def __init__(self, model_choice="pretrained", custom_weights=None):
@@ -46,9 +138,17 @@ class ProcessDDRModel:
         return YOLOv10(weights_path)
 
     def _render_all_pages(self, pdf_bytes: bytes):
-        temp_pdf = Path("temp_uploaded.pdf")
-        temp_pdf.write_bytes(pdf_bytes)
-        images = convert_from_path(str(temp_pdf), dpi=DPI, poppler_path=POPPLER_BIN)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = tmp.name
+        
+        try:
+            images = convert_from_path(tmp_path, dpi=DPI, poppler_path=POPPLER_BIN)
+        finally:
+            # Manually remove the temp file after images are in memory
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
         if not images:
             raise RuntimeError("PDF rendering failed.")
         return images
@@ -68,7 +168,7 @@ class ProcessDDRModel:
 
             img_pil.save(image_path)
             results = self.model.predict(str(image_path), imgsz=IMGSZ, conf=CONF, device=DEVICE,
-                                         agnostic_nms=True)
+                                        agnostic_nms=True)
             
             annotated = results[0].plot(pil=False, line_width=4, font_size=16)
             cv2.imwrite(str(annotated_path), annotated)
@@ -78,31 +178,56 @@ class ProcessDDRModel:
             boxes = results[0].boxes
             names = results[0].names
 
-            for i in range(len(boxes)):
-                cls_id = int(boxes.cls[i])
-                label = names[cls_id]
-                x1, y1, x2, y2 = map(int, boxes.xyxy[i])
-                x1, x2 = max(0, x1), min(w, x2)
-                y1, y2 = max(0, y1), min(h, y2)
-
-                if label in CROP_LABELS:
-                    crop = img[y1:y2, x1:x2]
-                    crop_path = crops_dir / f"{i:03d}_{label.replace(' ', '_')}.png"
-                    cv2.imwrite(str(crop_path), crop)
-                    total_crops += 1
-            
-            # save detections.txt for this page
-            detections_txt = page_dir / f"page_{idx:03d}_detections.txt"
-            lines = [f"Image: {image_path}", f"Detected regions: {len(boxes)}", ""]
+            # 1) Collect all detections
+            dets = []
             for i in range(len(boxes)):
                 cls_id = int(boxes.cls[i])
                 label = names[cls_id]
                 score = float(boxes.conf[i])
                 x1, y1, x2, y2 = map(int, boxes.xyxy[i])
+
                 x1, x2 = max(0, x1), min(w, x2)
                 y1, y2 = max(0, y1), min(h, y2)
-                lines.append(f"[{i:03d}] {label:18s} conf={score:.3f} bbox=({x1},{y1},{x2},{y2})")
 
-            detections_txt.write_text("\n".join(lines), encoding="utf-8")
+                dets.append({"i": i, "label": label, "conf": score, "box": (x1, y1, x2, y2)})
+
+            # 2) Deduplicate
+            dets_before = len(dets)
+            dets = dedupe_by_label(dets, iou_thresh=0.85, inside_thresh=0.90)
+            dets_after = len(dets)
+
+            # 3) Crop using the deduped detections
+            for d in dets:
+                label = d["label"]
+                if label not in CROP_LABELS:
+                    continue
+
+                x1, y1, x2, y2 = d["box"]
+                crop = img[y1:y2, x1:x2]
+
+                # Use original detection index for stable naming
+                crop_path = crops_dir / f"{d['i']:03d}_{label.replace(' ', '_')}.png"
+                cv2.imwrite(str(crop_path), crop)
+                total_crops += 1
+
+            # 4) Save detections.txt AFTER deduplication
+            detections_txt = page_dir / f"page_{idx:03d}_detections.txt"
+            lines = [
+                f"Image: {image_path}", 
+                f"Detected regions (after deduplication): {len(dets)}",
+                f"Original detections: {dets_before}",
+                f"Removed duplicates: {dets_before - dets_after}",
+                ""
+            ]
+            for d in dets:
+                area = _area(d["box"])
+                lines.append(
+                    f"[{d['i']:03d}] {d['label']:18s} conf={d['conf']:.3f} "
+                    f"bbox={d['box']} area={area:,}"
+                )
+
+            detections_txt.with_suffix(".json").write_text(
+                json.dumps(dets, ensure_ascii=False, indent=2),
+                encoding="utf-8")
 
         return total_pages, total_crops

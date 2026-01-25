@@ -4,10 +4,6 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any
 
-DET_RE = re.compile(
-    r"\[(\d+)\]\s+(\w+)\s+conf=([0-9.]+)\s+bbox=\((\d+),(\d+),(\d+),(\d+)\)"
-)
-
 def _iou(b1, b2) -> float:
     x1,y1,x2,y2 = b1
     X1,Y1,X2,Y2 = b2
@@ -44,16 +40,13 @@ def _x_overlap_ratio(a, b) -> float:
     denom = max(1e-6, min(ax2-ax1, bx2-bx1))
     return inter / denom
 
-def parse_detections_txt(detections_txt: Path, crops_dir: Path) -> List[Dict[str, Any]]:
+def parse_detections_json(dets: list[dict], crops_dir: Path) -> List[Dict[str, Any]]:
     items = []
-    for line in detections_txt.read_text(encoding="utf-8", errors="ignore").splitlines():
-        m = DET_RE.search(line.strip())
-        if not m:
-            continue
-        idx = int(m.group(1))
-        label = m.group(2)
-        conf = float(m.group(3))
-        x1,y1,x2,y2 = map(int, m.groups()[3:])
+    for d in dets:
+        idx = int(d["i"])
+        label = str(d["label"])
+        conf = float(d.get("conf", 0.0))
+        x1, y1, x2, y2 = map(int, d["box"])
 
         crop_path = crops_dir / f"{idx:03d}_{label}.png"
 
@@ -61,16 +54,14 @@ def parse_detections_txt(detections_txt: Path, crops_dir: Path) -> List[Dict[str
             "idx": idx,
             "label": label,
             "conf": conf,
-            "bbox": [x1,y1,x2,y2],
+            "bbox": [x1, y1, x2, y2],
             "crop_path": str(crop_path).replace("\\", "/"),
-        }
-
-        it.update({
             "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-            "cx": (x1+x2)/2, "cy": (y1+y2)/2,
-            "w": (x2-x1), "h": (y2-y1),
-        })
-
+            "cx": (x1 + x2) / 2,
+            "cy": (y1 + y2) / 2,
+            "w": (x2 - x1),
+            "h": (y2 - y1),
+        }
         items.append(it)
 
     return items
@@ -101,29 +92,31 @@ def link_headers(items: List[Dict[str, Any]], slack: int = 20) -> List[Dict[str,
     return items
 
 def build_and_save_layout(page_dir: Path) -> Dict[str, Any]:
-    """
-    page_dir example: processed_ddr/page_001
-    expects:
-      - page_001_detections.txt
-      - crops/
-    writes:
-      - layout.json
-    """
-    detections_txt = next(page_dir.glob("*_detections.txt"))
     crops_dir = page_dir / "crops"
 
-    items = parse_detections_txt(detections_txt, crops_dir)
+    detections_json = next(page_dir.glob("*_detections.json"), None)
+    if detections_json is None:
+        raise FileNotFoundError(
+            f"[LAYOUT] No *_detections.json found in {page_dir}"
+        )
+
+    dets = json.loads(detections_json.read_text(encoding="utf-8"))
+
+    items = parse_detections_json(dets, crops_dir)
     items = _dedupe_by_iou(items, iou_thr=0.9)
     items = reading_order(items)
     items = link_headers(items, slack=20)
 
     layout = {
         "page_dir": str(page_dir).replace("\\", "/"),
-        "detections_txt": str(detections_txt).replace("\\", "/"),
+        "detections_txt": str(detections_json).replace("\\", "/"),
         "num_items": len(items),
         "items": items,
     }
 
     out_path = page_dir / "layout.json"
-    out_path.write_text(json.dumps(layout, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(layout, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
     return layout

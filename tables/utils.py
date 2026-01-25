@@ -15,7 +15,7 @@ def coerce_timestamp(v: Any) -> Optional[str]:
         return None
 
     if isinstance(v, int):
-        print(f"[DEBUG] coercing int: {v}")  # <--- add this
+        print(f"[DEBUG] coercing int: {v}") 
         v = str(v)
 
     s = str(v).strip()

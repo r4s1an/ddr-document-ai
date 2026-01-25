@@ -25,6 +25,18 @@ FIELD_MAP = {
 }
 
 FIELDS = list(dict.fromkeys(FIELD_MAP.values()))
+def _safe_date_str(s):
+    t = str(s or "").strip()
+    if not t:
+        return None
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{1,2})", t)
+    if not m:
+        return s
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if d <= 0:
+        d = 1
+    return f"{y:04d}-{mo:02d}-{d:02d}"
+
 
 class SummaryLeftTableParser:
     def extract(self, json_path: Path) -> Dict[str, Any]:
@@ -147,4 +159,18 @@ class SummaryLeftTableParser:
                                 last_date_field = field
                             else:
                                 last_date_field = None
+
+        payload["date_well_complete"] = _safe_date_str(payload.get("date_well_complete"))
+
+        sp = str(payload.get("spud_ts") or "").strip()
+        if sp:
+            d, *rest = sp.split(" ", 1)
+            sd = _safe_date_str(d)
+            payload["spud_ts"] = f"{sd} {rest[0]}" if rest and sd else sd
+
+        rc = str(payload.get("report_creation_ts") or "").strip()
+        if rc:
+            d, *rest = rc.split(" ", 1)
+            rd = _safe_date_str(d)
+            payload["report_creation_ts"] = f"{rd} {rest[0]}" if rest and rd else rd
         return payload
