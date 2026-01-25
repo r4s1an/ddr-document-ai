@@ -1,0 +1,13 @@
+path: C:\Users\Yoked\Desktop\DDR Processor\dataset
+train: images/train
+val: images/val
+test: images/test
+
+nc: 6
+names:
+  0: table
+  1: figure
+  2: plain_text
+  3: section_header
+  4: wellbore_field
+  5: period_field

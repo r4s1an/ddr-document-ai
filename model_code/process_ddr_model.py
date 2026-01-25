@@ -7,19 +7,22 @@ from doclayout_yolo import YOLOv10
 POPPLER_BIN = r"C:\Users\Yoked\Desktop\DDR Processor\poppler-25.12.0\Library\bin"
 DPI = 320
 DEVICE = "0"
-CONF = 0.2
+CONF = 0.15
 IMGSZ = 896
 CROP_LABELS = {
-    "table", "figure", "title", "plain_text",
-    'table_footnote', "text", "header", "section_title"
+    "table",
+    "figure",
+    "plain_text", 
+    "section_header",
+    "wellbore_field",
+    "period_field", 
 }
 PRETRAINED_WEIGHTS = Path("models/doclayout_yolo_docstructbench_imgsz1024.pt")
-CUSTOM_WEIGHTS = Path(r"C:\Users\Yoked\Desktop\DDR Processor\runs\detect\DDR_Phase1_Frozen\weights\last.pt")
 
 class ProcessDDRModel:
     def __init__(self, model_choice="pretrained", custom_weights=None):
         self.model_choice = model_choice
-        self.custom_weights = custom_weights or CUSTOM_WEIGHTS
+        self.custom_weights = custom_weights or PRETRAINED_WEIGHTS
         self.model = self._ensure_model()
 
     def _get_weights_path(self):

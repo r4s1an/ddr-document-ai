@@ -10,3 +10,17 @@ __pycache__/
 
 # Virtual environments
 venv/
+
+poppler-25.12.0/
+
+dataset/
+
+models/
+
+out_test/
+
+processed_ddr/
+
+testing/
+
+paddle_ocr_playing/
