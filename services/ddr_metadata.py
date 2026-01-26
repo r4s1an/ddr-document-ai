@@ -5,8 +5,9 @@ from typing import Optional, Tuple
 def parse_wellbore(text: str) -> Optional[str]:
     if not text:
         return None
+
     m = re.search(
-        r'Wellbore\s*:\s*([0-9/]+(?:-[A-Za-z0-9]+)*(?:\s+[A-Z]{1,3})?)\b',
+        r'Wellbore\s*:\s*([0-9/]+(?:-[A-Za-z0-9]+)*(?:\s+[A-Za-z0-9]+)?)\b',
         text,
         flags=re.IGNORECASE
     )
