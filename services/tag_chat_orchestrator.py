@@ -1,14 +1,5 @@
-# services/tag_chat_orchestrator.py
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-
-
-# -----------------------------
-# Minimal contracts (MVP)
-# -----------------------------
 
 @dataclass
 class QueryPlan:
@@ -17,7 +8,6 @@ class QueryPlan:
     params: Dict[str, Any]
     limit: int = 200
 
-
 @dataclass
 class QueryUsed:
     name: str
@@ -25,23 +15,19 @@ class QueryUsed:
     params: Dict[str, Any]
     row_count: int
 
-
 def _error_json(msg: str, extra_limits: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "answer": msg,
-        "sql_used": [],
-        "tables_preview": {},
         "assumptions_or_limits": (extra_limits or []),
         "followups": [],
     }
-
 
 def run_tag_chat_turn(
     engine,
     question: str,
     document_id: Optional[int] = None,
     wellbore_name: Optional[str] = None,
-    day: Optional[str] = None,  # ISO date string "YYYY-MM-DD"
+    day: Optional[str] = None,   
     model_name: str = "gemini-flash-latest",
 ) -> Dict[str, Any]:
     """
@@ -57,11 +43,8 @@ def run_tag_chat_turn(
     if not question:
         return _error_json("Empty question.")
 
-    # -----------------------------
-    # 1) Route question -> QueryPlans OR clarification
-    # -----------------------------
     try:
-        from domain.tag_router import route_question  # we will create next
+        from domain.tag_router import route_question   
     except Exception as e:
         return _error_json(
             f"Backend not ready: missing domain.tag_router ({type(e).__name__}: {e})",
@@ -75,20 +58,10 @@ def run_tag_chat_turn(
         day=day,
     )
 
-    # Expected router_decision keys:
-    # {
-    #   "needs_clarification": bool,
-    #   "clarifying_question": str | None,
-    #   "query_plans": list[QueryPlan-like dict],
-    #   "assumptions_or_limits": list[str]
-    # }
-
     if router_decision.get("needs_clarification"):
         clarifying = router_decision.get("clarifying_question") or "Can you clarify?"
         return {
             "answer": clarifying,
-            "sql_used": [],
-            "tables_preview": {},
             "assumptions_or_limits": router_decision.get("assumptions_or_limits", []),
             "followups": router_decision.get("followups", []),
         }
@@ -100,7 +73,6 @@ def run_tag_chat_turn(
             router_decision.get("assumptions_or_limits", []),
         )
 
-    # Normalize plans into QueryPlan objects
     plans: List[QueryPlan] = []
     for p in raw_plans:
         plans.append(
@@ -112,33 +84,17 @@ def run_tag_chat_turn(
             )
         )
 
-    # -----------------------------
-    # 2) Execute SQL safely
-    # -----------------------------
     try:
-        from services.tag_fetch import run_many  # we will create next
+        from services.tag_fetch import run_many   
     except Exception as e:
         return _error_json(
             f"Backend not ready: missing services.tag_fetch ({type(e).__name__}: {e})",
             ["Create services/tag_fetch.py next."],
         )
-
-    # run_many should return:
-    # {
-    #   "results": { plan_name: {"rows": [...], "row_count": int, "truncated": bool} },
-    #   "sql_used": [ {name, sql, params, row_count} ... ],
-    # }
+     
     fetch_out = run_many(engine=engine, plans=plans)
 
     results = fetch_out.get("results", {}) or {}
-    sql_used = fetch_out.get("sql_used", []) or []
-
-    # Build a compact preview for UI + LLM grounding
-    # (We keep at most 25 rows per query in preview to stay small.)
-    tables_preview: Dict[str, Any] = {}
-    for qname, qres in results.items():
-        rows = qres.get("rows", []) or []
-        tables_preview[qname] = rows[:25]
 
     retrieved_payload = {
         "question": question,
@@ -147,16 +103,12 @@ def run_tag_chat_turn(
             "wellbore_name": wellbore_name,
             "day": day,
         },
-        "results": results,  # full (already limited by SQL)
-        "tables_preview": tables_preview,
+        "results": results,   
         "assumptions_or_limits": router_decision.get("assumptions_or_limits", []),
     }
 
-    # -----------------------------
-    # 3) Ask Gemini to produce STRICT JSON answer grounded in payload
-    # -----------------------------
     try:
-        from AI.gemini_tag_chat import generate_tag_answer  # we will create after fetch/router
+        from AI.gemini_tag_chat import generate_tag_answer   
     except Exception as e:
         return _error_json(
             f"Backend not ready: missing ai.gemini_tag_chat ({type(e).__name__}: {e})",
@@ -168,10 +120,6 @@ def run_tag_chat_turn(
         retrieved_payload=retrieved_payload,
         model_name=model_name,
     )
-
-    # Ensure required keys exist (defensive)
-    final_json.setdefault("sql_used", sql_used)
-    final_json.setdefault("tables_preview", tables_preview)
     final_json.setdefault("assumptions_or_limits", router_decision.get("assumptions_or_limits", []))
     final_json.setdefault("followups", router_decision.get("followups", []))
 

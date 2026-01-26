@@ -7,16 +7,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Gemini (Google) key
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("API_KEY")
 
-# Use a real Gemini model ID (examples: gemini-2.5-flash, gemini-2.0-flash)
 MODEL_NAME_DEFAULT = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
 GEMINI_ENDPOINT_TMPL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 )
-
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
     """
@@ -29,14 +27,14 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
 
     s = text.strip()
 
-    # 1) strict parse
+     
     try:
         obj = json.loads(s)
         return obj if isinstance(obj, dict) else None
     except Exception:
         pass
 
-    # 2) balanced-brace scan
+     
     start = s.find("{")
     if start == -1:
         return None
@@ -71,7 +69,7 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
                     obj = json.loads(candidate)
                     return obj if isinstance(obj, dict) else None
                 except Exception:
-                    # continue scanning for next object
+                     
                     nxt = s.find("{", i + 1)
                     if nxt == -1:
                         return None
@@ -149,7 +147,7 @@ Return STRICT JSON in this schema exactly:
 }
 """.strip()
 
-    # Gemini request format
+     
     req_payload = {
         "contents": [
             {
@@ -162,7 +160,7 @@ Return STRICT JSON in this schema exactly:
             }
         ],
         "generationConfig": {
-            # Keep this on — it helps a lot
+             
             "response_mime_type": "application/json",
             "temperature": 0.1,
             "maxOutputTokens": 8000,
@@ -181,7 +179,7 @@ Return STRICT JSON in this schema exactly:
 
     data = resp.json()
 
-    # Gemini text location
+     
     try:
         text_out = (
             data.get("candidates", [{}])[0]
@@ -194,7 +192,7 @@ Return STRICT JSON in this schema exactly:
 
     parsed = _extract_json_object(text_out)
 
-    # One deterministic retry if non-JSON
+     
     if not parsed:
         req_payload2 = dict(req_payload)
         req_payload2["generationConfig"] = dict(req_payload["generationConfig"])
@@ -221,7 +219,7 @@ Return STRICT JSON in this schema exactly:
     if not parsed:
         raise ValueError(f"Gemini returned non-JSON. Raw text (first 2000 chars): {text_out[:2000]}")
 
-    # Minimal validation (MVP)
+     
     if "daily_short_summary" not in parsed or "events" not in parsed:
         raise ValueError("Model output missing keys: daily_short_summary/events")
 

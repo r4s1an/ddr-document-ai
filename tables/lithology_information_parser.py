@@ -108,7 +108,7 @@ def _load_items(json_path: str) -> Tuple[List[dict], int]:
     row_thresh = max(14, int(mh * 0.85))
     return items, row_thresh
 def _detect_headers_and_xranges(items: List[dict], row_thresh: int) -> Tuple[Dict[str, Tuple[float, float]], float]:
-    # First, find the header row by looking for depth-related keywords
+     
     header_candidates = []
     for it in items:
         nt = norm(it["text"])
@@ -121,11 +121,11 @@ def _detect_headers_and_xranges(items: List[dict], row_thresh: int) -> Tuple[Dic
     header_candidates.sort(key=lambda z: z[0])
     header_y = header_candidates[0][0]
     
-    # Get all items in the header row
+     
     header_items = [it for y, it in header_candidates if abs(y - header_y) <= row_thresh * 2]
     header_items.sort(key=lambda it: it["x1"])
     
-    # Group nearby boxes horizontally (within 20px) to form compound headers
+     
     groups = []
     for it in header_items:
         nt = norm(it["text"])
@@ -144,7 +144,7 @@ def _detect_headers_and_xranges(items: List[dict], row_thresh: int) -> Tuple[Dic
             groups[-1]["cx"] = (groups[-1]["x1"] + it["x2"]) / 2.0
             groups[-1]["y2"] = max(groups[-1]["y2"], it["y2"])
     
-    # Now match compound headers
+     
     header_boxes: Dict[str, Tuple[float, float, float, float, float]] = {}
     
     for g in groups:

@@ -59,8 +59,7 @@ class IngestDDRAction:
                     "reason": "layout_ocr items not a list"
                 })
                 return None, None
-
-            # DEBUG: record counts per page
+             
             debug.setdefault("metadata_page_counts", {})[pd.name] = {
                 "num_items": len(items),
                 "nonempty_ocr_text": sum(1 for it in items if (it.get("ocr_text") or "").strip()),
@@ -71,7 +70,7 @@ class IngestDDRAction:
                     "plain_text": sum(1 for it in items if it.get("label") == "plain_text"),
                 }
             }
-            # collect OCR text from wellbore_field + period_field first
+             
             wb_texts = [it.get("ocr_text","") for it in items if it.get("label") == "wellbore_field"]
             per_texts = [it.get("ocr_text","") for it in items if it.get("label") == "period_field"]
             all_texts = [it.get("ocr_text","") for it in items if (it.get("ocr_text") or "").strip()]
@@ -90,8 +89,7 @@ class IngestDDRAction:
                     break
 
             return well, period
-
-        # Prefer page_001
+         
         first = out_dir / "page_001"
         if first.exists():
             debug["pages_checked"].append(first.name)
@@ -99,7 +97,6 @@ class IngestDDRAction:
             if well or period:
                 return well, period, first.name, debug
 
-        # Fallback scan all pages
         well = None
         period = None
         used = None
@@ -146,7 +143,6 @@ class IngestDDRAction:
             })
             debug["activity_summary_inserted"] = False
 
-
     def _write_summary_report(self, conn, out_dir: Path, document_id: int, debug: Dict[str, Any]) -> None:
         page_dirs = sorted(out_dir.glob("page_*"))
         found_any = False
@@ -184,7 +180,6 @@ class IngestDDRAction:
                 if it.get("label") == "table" and it.get("linked_header_idx") in summary_header_idxs
             ]
 
-            # Warning: Expected structure not found (non-fatal)
             if len(summary_tables) != 3:
                 debug.setdefault("warnings", []).append({
                     "step": "summary_report_parsing",
@@ -221,31 +216,21 @@ class IngestDDRAction:
             })
             
     def execute(self, filename: str, file_hash: str, out_dir: Path) -> IngestResult:
-        # ===================================================================
-        # PHASE 1: Pre-processing (Layout Detection & OCR)
-        # ===================================================================
-        
-        # Step 1.1: Build layout for all pages
+         
         page_dirs = sorted(out_dir.glob("page_*"))
         for pd in page_dirs:
             build_and_save_layout(pd)
             ocr_layout_json(pd, gpu=self.ocr_gpu)
 
-        # Step 1.2: Parse wellbore and period metadata
         well, period, used_page, debug = self._find_metadata_from_pages(out_dir)
         period_start = period[0].isoformat() if period else None
         period_end   = period[1].isoformat() if period else None
 
-        # Step 1.3: Run PaddleOCR for all tables (after all crops + layouts exist)
         ocr_debug = run_paddle_for_all_tables(out_dir, debug=False, skip_if_exists=True)
         debug["table_ocr"] = ocr_debug
-
-        # ===================================================================
-        # PHASE 2: Database Operations (Single Transaction)
-        # ===================================================================
-        
+    
         with self.engine.begin() as conn:
-            # Step 2.1: Insert/Update Document Metadata
+             
             doc_id = upsert_ddr_document(
                 conn,
                 filename=filename,
@@ -256,9 +241,6 @@ class IngestDDRAction:
             )
             debug["doc_id"] = doc_id
 
-            # Step 2.2: Parse and Insert All Table Data
-            
-            # Drilling Fluid (can be split across pages)
             try:
                 df_rows = parse_drilling_fluid_rows(out_dir, document_id=doc_id)
                 insert_ddr_drilling_fluid_rows(conn, document_id=doc_id, rows=df_rows)
@@ -279,7 +261,7 @@ class IngestDDRAction:
                     "error_type": type(e).__name__
                 })
             
-            # Operations
+             
             try:
                 ops_rows = parse_operations_rows(out_dir, document_id=doc_id)
                 insert_ddr_operations_rows(conn, document_id=doc_id, rows=ops_rows)
@@ -300,7 +282,7 @@ class IngestDDRAction:
                     "error_type": type(e).__name__
                 })
             
-            # Survey Station
+             
             try:
                 ss_rows = parse_survey_station_rows(out_dir, document_id=doc_id)
                 insert_ddr_survey_station_rows(conn, document_id=doc_id, rows=ss_rows)
@@ -321,7 +303,6 @@ class IngestDDRAction:
                     "error_type": type(e).__name__
                 })
             
-            # Stratigraphic Information
             try:
                 si_rows = parse_stratigraphic_information_rows(out_dir, document_id=doc_id)
                 insert_ddr_stratigraphic_information_rows(conn, document_id=doc_id, rows=si_rows)
@@ -341,8 +322,7 @@ class IngestDDRAction:
                     "error": str(e),
                     "error_type": type(e).__name__
                 })
-            
-            # Lithology Information
+             
             try:
                 li_rows = parse_lithology_information_rows(out_dir, document_id=doc_id)
                 insert_ddr_lithology_information_rows(conn, document_id=doc_id, rows=li_rows)
@@ -363,7 +343,6 @@ class IngestDDRAction:
                     "error_type": type(e).__name__
                 })
             
-            # Gas Reading Information
             try:
                 gr_rows = parse_gas_reading_information_rows(out_dir, document_id=doc_id)
                 insert_ddr_gas_reading_information_rows(conn, document_id=doc_id, rows=gr_rows)
@@ -384,21 +363,14 @@ class IngestDDRAction:
                     "error_type": type(e).__name__
                 })
 
-            # Step 2.3: Parse and Insert Summary Report (structured tables)
             self._write_summary_report(conn, out_dir, doc_id, debug)
-
-            # Step 2.4: Extract and Insert Activity Summaries (plain text)
+             
             self._upsert_activity_summary(conn, out_dir, doc_id, debug)
-
-            # Step 2.5: Final Updates (report_number from summary if available)
+             
             report_number = debug.get("summary_report_payload", {}).get("report_number")
             if report_number is not None:
                 update_report_number(conn, document_id=doc_id, report_number=report_number)
 
-        # ===================================================================
-        # PHASE 3: Return Results
-        # ===================================================================
-        
         return IngestResult(
             doc_id,
             well,

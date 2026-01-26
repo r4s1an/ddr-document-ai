@@ -14,23 +14,21 @@ def parse_wellbore(text: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 def _norm_time(t: str) -> str:
-    # "00.00" -> "00:00"
+     
     return t.replace(".", ":").strip()
 
 def parse_period(text: str) -> Optional[Tuple[datetime, datetime]]:
     if not text:
         return None
-
-    # Accept:
-    # Period: YYYY-MM-DD [HH:MM or HH.MM] [ - or whitespace ] YYYY-MM-DD [time optional]
+     
     m = re.search(
         r'Period\s*:\s*'
-        r'(\d{4}-\d{2}-\d{2})'                # start date
-        r'(?:\s+(\d{2}[:.]\d{2}))?'           # optional start time
-        r'\s*(?:[-–—]\s*)?'                   # optional dash
+        r'(\d{4}-\d{2}-\d{2})'                 
+        r'(?:\s+(\d{2}[:.]\d{2}))?'            
+        r'\s*(?:[-–—]\s*)?'                    
         r'\s*'
-        r'(\d{4}-\d{2}-\d{2})'                # end date
-        r'(?:\s+(\d{2}[:.]\d{2}))?',          # optional end time
+        r'(\d{4}-\d{2}-\d{2})'                 
+        r'(?:\s+(\d{2}[:.]\d{2}))?',           
         text,
         flags=re.IGNORECASE
     )

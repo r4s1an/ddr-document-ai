@@ -13,7 +13,6 @@ class SummaryReportParser:
 
         left, middle, right = tables
 
-        # Ensure these are Paths
         left_crop = Path(left["crop_path"])
         mid_crop  = Path(middle["crop_path"])
         right_crop= Path(right["crop_path"])
@@ -24,7 +23,7 @@ class SummaryReportParser:
         mid_json   = run_paddle_ocr(mid_crop,   base_dir / "middle")
         right_json = run_paddle_ocr(right_crop, base_dir / "right")
 
-        # ✅ defensive checks
+         
         assert isinstance(left_json, (str, Path)), f"left_json wrong type: {type(left_json)}"
         assert isinstance(mid_json, (str, Path)), f"mid_json wrong type: {type(mid_json)}"
         assert isinstance(right_json, (str, Path)), f"right_json wrong type: {type(right_json)}"

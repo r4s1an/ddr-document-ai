@@ -21,7 +21,7 @@ class EasyOCRService:
         confs: List[float] = []
 
         for r in res:
-            # Usually: (bbox, text, conf) but can vary
+             
             if isinstance(r, (list, tuple)):
                 if len(r) >= 2:
                     texts.append(str(r[1]).strip())

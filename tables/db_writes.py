@@ -1,12 +1,12 @@
-# db_writes.py - SQL Statement Naming Refactor
+ 
 
 from __future__ import annotations
 from sqlalchemy import text
 from typing import Any, Dict, List
 
-# ===================================================================
-# UPSERT operations (INSERT with ON CONFLICT DO UPDATE)
-# ===================================================================
+ 
+ 
+ 
 
 SQL_UPSERT_DDR_DOCUMENT = text("""
 INSERT INTO ddr_documents (
@@ -150,9 +150,6 @@ DO UPDATE SET
     extracted_at = NOW();
 """)
 
-# ===================================================================
-# UPDATE operations (simple updates)
-# ===================================================================
 
 SQL_UPDATE_DDR_REPORT_NUMBER = text("""
 UPDATE ddr_documents
@@ -160,9 +157,7 @@ SET report_number = :rn
 WHERE id = :id
 """)
 
-# ===================================================================
-# DELETE operations (for replace-all pattern)
-# ===================================================================
+ 
 
 SQL_DELETE_DDR_DRILLING_FLUID = text("""
 DELETE FROM ddr_drilling_fluid
@@ -194,9 +189,9 @@ DELETE FROM ddr_gas_reading_information
 WHERE document_id = :document_id
 """)
 
-# ===================================================================
-# INSERT operations (batch inserts after delete)
-# ===================================================================
+ 
+ 
+ 
 
 SQL_INSERT_DDR_DRILLING_FLUID = text("""
 INSERT INTO ddr_drilling_fluid (
@@ -338,9 +333,6 @@ VALUES (
 )
 """)
 
-# ===================================================================
-# Function implementations
-# ===================================================================
 
 def upsert_ddr_document(
     conn,
@@ -384,10 +376,8 @@ def upsert_ddr_activity_summary(
         },
     )
 
-
 def upsert_ddr_summary_report(conn, *, payload: Dict[str, Any]) -> None:
     conn.execute(SQL_UPSERT_DDR_SUMMARY_REPORT, payload)
-
 
 def insert_ddr_drilling_fluid_rows(
     conn,
@@ -410,7 +400,6 @@ def insert_ddr_operations_rows(
     if rows:
         conn.execute(SQL_INSERT_DDR_OPERATIONS, rows)
 
-
 def insert_ddr_survey_station_rows(
     conn,
     *,
@@ -420,7 +409,6 @@ def insert_ddr_survey_station_rows(
     conn.execute(SQL_DELETE_DDR_SURVEY_STATION, {"document_id": document_id})
     if rows:
         conn.execute(SQL_INSERT_DDR_SURVEY_STATION, rows)
-
 
 def insert_ddr_stratigraphic_information_rows(
     conn,
@@ -432,7 +420,6 @@ def insert_ddr_stratigraphic_information_rows(
     if rows:
         conn.execute(SQL_INSERT_DDR_STRATIGRAPHIC_INFORMATION, rows)
 
-
 def insert_ddr_lithology_information_rows(
     conn,
     *,
@@ -442,7 +429,6 @@ def insert_ddr_lithology_information_rows(
     conn.execute(SQL_DELETE_DDR_LITHOLOGY_INFORMATION, {"document_id": document_id})
     if rows:
         conn.execute(SQL_INSERT_DDR_LITHOLOGY_INFORMATION, rows)
-
 
 def insert_ddr_gas_reading_information_rows(
     conn,

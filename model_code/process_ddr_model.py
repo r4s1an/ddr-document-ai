@@ -22,7 +22,7 @@ CROP_LABELS = {
 }
 PRETRAINED_WEIGHTS = Path("models/doclayout_yolo_docstructbench_imgsz1024.pt")
 
-Box = Tuple[int, int, int, int]  # x1,y1,x2,y2
+Box = Tuple[int, int, int, int]   
 
 def _area(b: Box) -> int:
     x1, y1, x2, y2 = b
@@ -66,13 +66,13 @@ def dedupe_by_label(
     """
     out: List[dict] = []
     
-    # Group by label
+     
     by_label: dict[str, List[dict]] = {}
     for d in dets:
         by_label.setdefault(d["label"], []).append(d)
 
     for label, group in by_label.items():
-        # Sort by area (largest first), then by confidence
+         
         group = sorted(group, key=lambda d: (-_area(d["box"]), -d["conf"]))
         
         kept: List[dict] = []
@@ -81,24 +81,24 @@ def dedupe_by_label(
             drop = False
             
             for k in kept:
-                # Check if current box is mostly inside a kept box
+                 
                 inside_ratio = _inside_ratio(d["box"], k["box"])
                 if inside_ratio >= inside_thresh:
                     drop = True
                     break
                 
-                # Check if kept box is mostly inside current box
-                # (current is larger since we sorted by area)
+                 
+                 
                 inside_ratio_rev = _inside_ratio(k["box"], d["box"])
                 if inside_ratio_rev >= inside_thresh:
-                    # Remove the smaller kept box, keep current
+                     
                     kept.remove(k)
                     continue
                 
-                # Check IoU overlap
+                 
                 iou = _iou(d["box"], k["box"])
                 if iou >= iou_thresh:
-                    # Already sorted by size, so keep the larger one (already in kept)
+                     
                     drop = True
                     break
             
@@ -107,7 +107,7 @@ def dedupe_by_label(
 
         out.extend(kept)
 
-    # Sort by position (top to bottom, left to right)
+     
     out = sorted(out, key=lambda d: (d["box"][1], d["box"][0]))
     return out
 
@@ -145,7 +145,7 @@ class ProcessDDRModel:
         try:
             images = convert_from_path(tmp_path, dpi=DPI, poppler_path=POPPLER_BIN)
         finally:
-            # Manually remove the temp file after images are in memory
+             
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
                 
@@ -178,7 +178,7 @@ class ProcessDDRModel:
             boxes = results[0].boxes
             names = results[0].names
 
-            # 1) Collect all detections
+             
             dets = []
             for i in range(len(boxes)):
                 cls_id = int(boxes.cls[i])
@@ -191,12 +191,12 @@ class ProcessDDRModel:
 
                 dets.append({"i": i, "label": label, "conf": score, "box": (x1, y1, x2, y2)})
 
-            # 2) Deduplicate
+             
             dets_before = len(dets)
             dets = dedupe_by_label(dets, iou_thresh=0.85, inside_thresh=0.90)
             dets_after = len(dets)
 
-            # 3) Crop using the deduped detections
+             
             for d in dets:
                 label = d["label"]
                 if label not in CROP_LABELS:
@@ -205,12 +205,12 @@ class ProcessDDRModel:
                 x1, y1, x2, y2 = d["box"]
                 crop = img[y1:y2, x1:x2]
 
-                # Use original detection index for stable naming
+                 
                 crop_path = crops_dir / f"{d['i']:03d}_{label.replace(' ', '_')}.png"
                 cv2.imwrite(str(crop_path), crop)
                 total_crops += 1
 
-            # 4) Save detections.txt AFTER deduplication
+             
             detections_txt = page_dir / f"page_{idx:03d}_detections.txt"
             lines = [
                 f"Image: {image_path}", 

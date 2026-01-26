@@ -1,8 +1,5 @@
 
 QUERY_CATALOG = {
-    # ------------------------------------------------------------
-    # Document overview (single doc)
-    # ------------------------------------------------------------
     "doc_overview": """
     SELECT
         d.id,
@@ -57,10 +54,6 @@ QUERY_CATALOG = {
     WHERE d.id = :document_id
     LIMIT :limit
     """,
-
-    # ------------------------------------------------------------
-    # Daily metrics view (by document_id)
-    # ------------------------------------------------------------
     "daily_metrics_by_doc": """
     SELECT
         document_id,
@@ -78,10 +71,6 @@ QUERY_CATALOG = {
     ORDER BY day DESC
     LIMIT :limit
     """,
-
-    # ------------------------------------------------------------
-    # Operations (by document_id)
-    # ------------------------------------------------------------
     "ops_by_doc": """
     SELECT
         id,
@@ -102,7 +91,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Failed operations (by document_id) - MVP fail definition: state='fail'
     "fail_ops_by_doc": """
     SELECT
         id,
@@ -124,7 +112,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Top remarks by doc (raw counts)
     "top_remarks_by_doc": """
     SELECT
         remark,
@@ -137,10 +124,6 @@ QUERY_CATALOG = {
     ORDER BY n DESC, remark
     LIMIT :limit
     """,
-
-    # ------------------------------------------------------------
-    # Gas readings (by document_id)
-    # ------------------------------------------------------------
     "gas_by_doc": """
     SELECT
         id,
@@ -163,8 +146,6 @@ QUERY_CATALOG = {
     ORDER BY time NULLS LAST, id
     LIMIT :limit
     """,
-
-    # Optional: gas spikes (top highest_gas_percent)
     "gas_spikes_by_doc": """
     SELECT
         id,
@@ -184,11 +165,37 @@ QUERY_CATALOG = {
     ORDER BY highest_gas_percent DESC NULLS LAST, time NULLS LAST, id
     LIMIT :limit
     """,
-
-    # ------------------------------------------------------------
-    # Wellbore + day (find matching documents)
-    # day is ISO date string, compared against period_start::date
-    # ------------------------------------------------------------
+    "drilling_fluid_by_doc": """
+    SELECT
+        id,
+        document_id,
+        sample_time,
+        sample_point,
+        sample_depth_mmd,
+        fluid_type,
+        fluid_density_g_cm3
+    FROM ddr_drilling_fluid
+    WHERE document_id = :document_id
+    ORDER BY sample_time NULLS LAST, id
+    LIMIT :limit
+    """,
+    "drilling_fluid_by_well_day": """
+    SELECT
+        f.id,
+        f.document_id,
+        f.sample_time,
+        f.sample_point,
+        f.sample_depth_mmd,
+        f.fluid_type,
+        f.fluid_density_g_cm3
+    FROM ddr_drilling_fluid f
+    JOIN ddr_documents d
+    ON d.id = f.document_id
+    WHERE d.wellbore_name = :wellbore_name
+    AND d.period_start::date = :day
+    ORDER BY f.sample_time NULLS LAST, f.id
+    LIMIT :limit
+    """,
     "docs_by_well_day": """
     SELECT
         id AS document_id,
@@ -204,8 +211,6 @@ QUERY_CATALOG = {
     ORDER BY id DESC
     LIMIT :limit
     """,
-
-    # Daily metrics by well + day
     "daily_metrics_by_well_day": """
     SELECT
         document_id,
@@ -225,7 +230,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Operations by well + day (joins documents -> operations)
     "ops_by_well_day": """
     SELECT
         o.id,
@@ -251,8 +255,6 @@ QUERY_CATALOG = {
         o.id
     LIMIT :limit
     """,
-
-    # Failed operations by well + day
     "fail_ops_by_well_day": """
     SELECT
         o.id,
@@ -280,7 +282,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Top remarks by well + day
     "top_remarks_by_well_day": """
     SELECT
         o.remark,
@@ -298,7 +299,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Gas by well + day
     "gas_by_well_day": """
     SELECT
         g.id,
@@ -327,9 +327,6 @@ QUERY_CATALOG = {
     ORDER BY g.time NULLS LAST, g.id
     LIMIT :limit
     """,
-        # ------------------------------------------------------------
-    # Engineering images: pressure plots (stored JSON)
-    # ------------------------------------------------------------
     "pressure_time_plot_by_id": """
     SELECT
         id,
@@ -380,7 +377,6 @@ QUERY_CATALOG = {
     LIMIT :limit
     """,
 
-    # Optional: search by title (ILIKE). Good for "find plot about X"
     "pressure_time_plots_by_title": """
     SELECT
         id,
@@ -406,4 +402,44 @@ QUERY_CATALOG = {
     ORDER BY id DESC
     LIMIT :limit
     """,
+    "latest_plot_any": """
+    SELECT 'pressure_plot' AS plot_type, id, chart_title, interpretation, raw_json, source_key, created_at
+    FROM pressure_plot
+    UNION ALL
+    SELECT 'pressure_profile_plot' AS plot_type, id, chart_title, interpretation, raw_json, source_key, created_at
+    FROM pressure_profile_plot
+    ORDER BY created_at DESC
+    LIMIT :limit
+    """,
+    "pressure_time_series_by_plot_id": """
+    SELECT id AS series_id, plot_id, well_name
+    FROM pressure_series
+    WHERE plot_id = :plot_id
+    ORDER BY id
+    LIMIT :limit
+    """,
+
+    "pressure_time_points_by_plot_id": """
+    SELECT id, plot_id, series_id, x_text, x_date, pressure_psi, point_order
+    FROM pressure_point
+    WHERE plot_id = :plot_id
+    ORDER BY series_id, point_order
+    LIMIT :limit
+    """,
+    "pressure_profile_curves_by_plot_id": """
+    SELECT id AS curve_id, plot_id, curve_name
+    FROM pressure_profile_curve
+    WHERE plot_id = :plot_id
+    ORDER BY id
+    LIMIT :limit
+    """,
+
+    "pressure_profile_points_by_plot_id": """
+    SELECT id, plot_id, curve_id, pressure_psi, depth_value, depth_unit, point_order
+    FROM pressure_profile_point
+    WHERE plot_id = :plot_id
+    ORDER BY curve_id, point_order
+    LIMIT :limit
+    """,
+
 }

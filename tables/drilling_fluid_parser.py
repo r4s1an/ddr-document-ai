@@ -233,7 +233,7 @@ def _find_best_label_cell(
 ) -> Optional[OCRCell]:
     target = _normalize_text(target_label)
 
-    # Search labels left of first value column if we know columns
+     
     if col_model is not None and col_model.col_x:
         label_region_right = min(col_model.col_x) - 10
     else:
@@ -410,7 +410,7 @@ def _is_plausible(field: str, value: Any) -> bool:
     except Exception:
         return False
 
-    # keep -999.99 sentinel
+     
     if abs(v + 999.99) < 1e-6:
         return True
 

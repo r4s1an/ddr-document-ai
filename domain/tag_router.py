@@ -1,7 +1,4 @@
 # domain/tag_router.py
-
-from __future__ import annotations
-
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -26,10 +23,8 @@ _PLOT_ID_RE = re.compile(r"\b(?:plot[_\s-]*id|plot)[\s:=#]*([0-9]{1,12})\b", re.
 def _norm_ws(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
-
 def _lower(s: str) -> str:
     return (s or "").strip().lower()
-
 
 def _parse_iso_date(s: str) -> Optional[str]:
     """Return ISO date string YYYY-MM-DD if valid."""
@@ -87,8 +82,13 @@ def _intent_keywords(q: str) -> Dict[str, bool]:
         "gas": any(k in ql for k in ["gas", "c1", "c2", "c3", "ic4", "ic5", "ppm", "%"]),
         "top_reasons": any(k in ql for k in ["top", "recurring", "common", "most frequent", "reasons", "remarks"]),
         "summary": any(k in ql for k in ["summary", "overview", "report", "status"]),
-        "image": any(k in ql for k in ["plot", "chart", "curve", "profile", "pressure plot", "pressure profile"]),
-
+        "image": any(k in ql for k in [
+        "image", "uploaded", "upload", "last image", "latest image", "recent image",
+        "plot", "chart", "graph", "figure",
+        "curve", "series",
+        "profile", "pressure plot", "pressure profile",
+        "pressure vs time", "pressure vs depth", "offset wells"]),
+        "fluid": any(k in ql for k in ["fluid", "drilling fluid", "mud", "ultidrill", "wbm", "obm", "density", "active pit"]),        
     }
 
 
@@ -181,6 +181,8 @@ def route_question(
         intent = "FAILED_OPS"
     elif kw["gas"]:
         intent = "GAS"
+    elif kw["fluid"]:
+        intent = "DRILLING_FLUID"
     elif kw["top_reasons"]:
         intent = "TOP_REMARKS"
     elif kw["operations"]:
@@ -201,8 +203,12 @@ def route_question(
         if plot_id is not None:
             if is_profile and not is_time:
                 plans.append(_make_plan("pressure_profile_plot_by_id", {"plot_id": plot_id}, limit=5))
+                plans.append(_make_plan("pressure_profile_curves_by_plot_id", {"plot_id": plot_id}, limit=50))
+                plans.append(_make_plan("pressure_profile_points_by_plot_id", {"plot_id": plot_id}, limit=2000))
             elif is_time and not is_profile:
                 plans.append(_make_plan("pressure_time_plot_by_id", {"plot_id": plot_id}, limit=5))
+                plans.append(_make_plan("pressure_time_series_by_plot_id", {"plot_id": plot_id}, limit=50))
+                plans.append(_make_plan("pressure_time_points_by_plot_id", {"plot_id": plot_id}, limit=2000))
             else:
                 # unknown which type; try both
                 plans.append(_make_plan("pressure_time_plot_by_id", {"plot_id": plot_id}, limit=5))
@@ -231,6 +237,22 @@ def route_question(
                 "query_plans": plans,
                 "assumptions_or_limits": assumptions + ["Image intent: summarizing stored interpretation + raw_json from SQL."],
                 "followups": ["If multiple plots are returned, tell me which plot_id to focus on."],
+            }
+        # NEW: If user says "recent/last/uploaded" and no plot_id/source_key, fetch latest plot
+        ql = _lower(q)
+        wants_latest = any(k in ql for k in ["recent", "latest", "last", "uploaded", "upload"])
+        if wants_latest and plot_id is None and not source_key:
+            plans.append(_make_plan("latest_plot_any", {"limit": 1}, limit=1))
+            return {
+                "needs_clarification": False,
+                "clarifying_question": None,
+                "query_plans": plans,
+                "assumptions_or_limits": assumptions + [
+                    "Image intent: resolved 'recently uploaded' to latest plot by created_at across both plot tables."
+                ],
+                "followups": [
+                    "If you meant a specific plot, provide plot_id or source_key."
+                ],
             }
 
         # Fallback: title search using ILIKE
@@ -297,12 +319,7 @@ def route_question(
             ],
         }
 
-    # --- Resolve day/doc/well for non-compare intents ---
-    # For well+day queries, we need document ids for that well/day.
-    # We'll use a lookup query, then other queries can use that result later (we’ll do that in fetch layer later).
-    # MVP: we directly query by (well, day) in templates where possible.
-
-    if intent in ("DOC_OVERVIEW", "OPS_TIMELINE", "FAILED_OPS", "DOWNTIME", "TOP_REMARKS", "GAS"):
+    if intent in ("DOC_OVERVIEW", "OPS_TIMELINE", "FAILED_OPS", "DOWNTIME", "TOP_REMARKS", "GAS", "DRILLING_FLUID"):
         # If doc_id is present, we anchor everything to doc_id
         if doc_id is not None:
             plans.append(_make_plan("doc_overview", {"document_id": doc_id}, limit=1))
@@ -319,6 +336,9 @@ def route_question(
 
             if intent == "GAS":
                 plans.append(_make_plan("gas_by_doc", {"document_id": doc_id}, limit=300))
+            
+            if intent == "DRILLING_FLUID":
+                plans.append(_make_plan("drilling_fluid_by_doc", {"document_id": doc_id}, limit=200))
 
             return {
                 "needs_clarification": False,
@@ -344,6 +364,9 @@ def route_question(
 
             if intent == "GAS":
                 plans.append(_make_plan("gas_by_well_day", {"wellbore_name": well, "day": day_iso}, limit=400))
+            
+            if intent == "DRILLING_FLUID":
+                plans.append(_make_plan("drilling_fluid_by_well_day", {"wellbore_name": well, "day": day_iso}, limit=200))
 
             return {
                 "needs_clarification": False,

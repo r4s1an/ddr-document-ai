@@ -3,17 +3,14 @@ from enum import Enum
 from pathlib import Path
 import re
 from typing import Dict, Tuple
-
 import cv2
 
 class PlotType(str, Enum):
     PRESSURE_VS_TIME = "pressure_vs_time"
     PRESSURE_VS_DEPTH = "pressure_vs_depth"
 
-
 class PlotTypeDetectionError(RuntimeError):
     pass
-
 
 @dataclass(frozen=True)
 class DetectionResult:
@@ -21,15 +18,13 @@ class DetectionResult:
     scores: Dict[str, int]
     ocr_text: str
 
-
-# --- Keyword sets (explicit & extendable) ---
 TIME_SIGNALS = [
     r"\bdate\b",
     r"\bpressure comparison\b",
     r"\boffset wells\b",
     r"\bwell[_\s-]*0?\d\b",
-    r"\b20\d{2}[-/]\d{2}\b",   # 2019-07
-    r"\b20\d{2}\b",            # 2018
+    r"\b20\d{2}[-/]\d{2}\b",    
+    r"\b20\d{2}\b",             
     r"\bjan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec\b",
 ]
 
@@ -46,13 +41,12 @@ DEPTH_SIGNALS = [
     r"\bpsi\b",
 ]
 
-
 def _preprocess_for_ocr(img_bgr):
     """Deterministic preprocessing to stabilize OCR."""
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # upscale improves OCR on plots
+     
     gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    # denoise + binarize
+     
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     thr = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 5
@@ -72,7 +66,6 @@ def _ocr_text_from_bgr(img_bgr) -> str:
     )
 
     return " ".join(results).lower().strip()
-
 
 def _ocr_text(image_path: Path) -> str:
     img = cv2.imread(str(image_path))
@@ -97,21 +90,18 @@ def _score(text: str) -> Tuple[int, int, Dict[str, int]]:
 
     time_score = add_score("time", TIME_SIGNALS, weight=2)
     depth_score = add_score("depth", DEPTH_SIGNALS, weight=2)
-
-    # Extra deterministic numeric heuristics:
-    # Depth plots often contain many "26xx" style values; time plots often contain years.
-    if re.search(r"\b26\d{2}\b", text):  # e.g., 2625, 2630 ...
+     
+    if re.search(r"\b26\d{2}\b", text):   
         depth_score += 2
         scores["depth:depth_numbers_26xx"] = 2
 
-    # If multiple year-like tokens exist, it strongly suggests a time axis.
+     
     years = re.findall(r"\b20\d{2}\b", text)
     if len(set(years)) >= 2:
         time_score += 2
         scores["time:multiple_years"] = 2
 
     return time_score, depth_score, scores
-
 
 def detect_plot_type(image_path: str | Path, *, debug: bool = False) -> DetectionResult:
     """
@@ -145,7 +135,7 @@ def detect_plot_type(image_path: str | Path, *, debug: bool = False) -> Detectio
         raise PlotTypeDetectionError(msg)
 
     if debug:
-        # Keep this deterministic & concise
+         
         print(f"[plot-type] {image_path.name} -> {chosen.value} (time={time_score}, depth={depth_score})")
 
     return DetectionResult(

@@ -18,36 +18,31 @@ def _wrap_lines(text: str, max_chars: int) -> list[str]:
         if not p:
             out.append("")
             continue
-        
-        # Split paragraph into words
+         
         words = p.split()
         current_line = ""
         
         for word in words:
-            # If adding this word would exceed max_chars
+             
             if current_line and len(current_line) + 1 + len(word) > max_chars:
-                # If the word itself is longer than max_chars, split it
+                 
                 if len(word) > max_chars:
                     if current_line:
                         out.append(current_line)
                         current_line = ""
-                    # Split long word with hyphen
+                     
                     while len(word) > max_chars - 1:
                         out.append(word[:max_chars - 1] + "-")
                         word = word[max_chars - 1:]
                     current_line = word
                 else:
-                    # Save current line and start new one
                     out.append(current_line)
                     current_line = word
             else:
-                # Add word to current line
                 if current_line:
                     current_line += " " + word
                 else:
                     current_line = word
-        
-        # Don't forget the last line
         if current_line:
             out.append(current_line)
     
@@ -58,7 +53,7 @@ def _normalize_summary(text: str) -> str:
     if not text:
         return ""
     s = " ".join(str(text).splitlines())
-    # collapse repeated whitespace
+     
     s = " ".join(s.split())
     return s.strip()
 
@@ -109,11 +104,11 @@ def build_pdf_bytes(payload: dict, analytics: dict) -> bytes:
     c.drawString(x, y, "Detected Events & Anomalies")
     y -= line_h
 
-    # Adjusted column positions and widths to prevent overlap
+     
     col_idx_x = x
     col_time_x = x + 10 * mm
     col_event_x = x + 38 * mm
-    col_anom_x = x + 85 * mm  # Moved right from 78mm
+    col_anom_x = x + 85 * mm   
     col_sev_x = x + 170 * mm
 
     c.setFont("Helvetica-Bold", 9)
@@ -134,13 +129,13 @@ def build_pdf_bytes(payload: dict, analytics: dict) -> bytes:
         if isinstance(e, dict) and "op_row_index" in e:
             ev_map[int(e["op_row_index"])] = e
 
-    row_line_h = line_h * 0.85  # slightly tighter for table rows
+    row_line_h = line_h * 0.85   
 
-    # Adjusted max chars per column to prevent overflow
+     
     IDX_CH = 3
     TIME_CH = 20
-    EVENT_CH = 35  # Reduced from 38 to give more room
-    ANOM_CH = 50   # Reduced from 55 to match new position
+    EVENT_CH = 35   
+    ANOM_CH = 50    
     SEV_CH = 8
 
     for i in range(len(ops)):
@@ -175,7 +170,6 @@ def build_pdf_bytes(payload: dict, analytics: dict) -> bytes:
             anomalies_s = ", ".join(labels)
             sev = " / ".join(severities) if severities else "MED"
 
-        # Wrap each column separately with word-aware wrapping
         idx_lines = _wrap_lines(str(i), IDX_CH)
         time_lines = _wrap_lines(time_s, TIME_CH)
         event_lines = _wrap_lines(event_type, EVENT_CH)
@@ -184,12 +178,10 @@ def build_pdf_bytes(payload: dict, analytics: dict) -> bytes:
 
         max_lines = max(len(idx_lines), len(time_lines), len(event_lines), 
                        len(anom_lines), len(sev_lines))
-
-        # If row doesn't fit, stop
+         
         if y - (max_lines - 1) * row_line_h < 22 * mm:
             break
-
-        # Draw line-by-line to form a "tall" row
+         
         for li in range(max_lines):
             yy = y - li * row_line_h
             c.drawString(col_idx_x, yy, idx_lines[li] if li < len(idx_lines) else "")
@@ -197,8 +189,7 @@ def build_pdf_bytes(payload: dict, analytics: dict) -> bytes:
             c.drawString(col_event_x, yy, event_lines[li] if li < len(event_lines) else "")
             c.drawString(col_anom_x, yy, anom_lines[li] if li < len(anom_lines) else "")
             c.drawString(col_sev_x, yy, sev_lines[li] if li < len(sev_lines) else "")
-
-        # Move y down by the full row height (+ small gap)
+         
         y -= max_lines * row_line_h + (row_line_h * 0.25)
 
     c.setFont("Helvetica-Oblique", 8)

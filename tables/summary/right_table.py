@@ -30,17 +30,17 @@ FIELD_MAP = {
 
 def normalize_label(s: str) -> str:
     s = clean(s).replace("：", ":")
-    s = re.sub(r"\([^)]*\)", "", s)  # strips "(m)" or "()" etc
+    s = re.sub(r"\([^)]*\)", "", s)   
     s = s.rstrip(":").strip().lower()
 
-    # normalize common OCR variants
-    s = re.sub(r"\bm\s*md\b", "mmd", s)     # "m md" -> mmd
-    s = re.sub(r"\bmmd\b", "mmd", s)       # idempotent
-    s = re.sub(r"\bm\s*tvd\b", "mtvd", s)  # "m tvd" -> mtvd
+     
+    s = re.sub(r"\bm\s*md\b", "mmd", s)      
+    s = re.sub(r"\bmmd\b", "mmd", s)        
+    s = re.sub(r"\bm\s*tvd\b", "mtvd", s)   
     s = re.sub(r"\bmtvd\b", "mtvd", s)
 
-    # also fix "kickoff" spacing
-    s = s.replace("kick off", "kick off")  # keep as is, but stable
+     
+    s = s.replace("kick off", "kick off")   
     return s
 
 def match_field(norm_label: str) -> str | None:
@@ -53,13 +53,12 @@ def match_field(norm_label: str) -> str | None:
     if norm_label in FIELD_MAP:
         return FIELD_MAP[norm_label]
 
-    # containment fallback
+     
     for k, v in FIELD_MAP.items():
         if k in norm_label:
             return v
 
-    # tolerant pattern fallback
-    # e.g. OCR: "depth at kickoff mmd" (kickoff as one word)
+     
     if "depth" in norm_label and "kick" in norm_label and "off" in norm_label and "mmd" in norm_label:
         return "depth_kickoff_mmd"
     if "depth" in norm_label and "kick" in norm_label and "off" in norm_label and "mtvd" in norm_label:
@@ -78,7 +77,7 @@ def match_field(norm_label: str) -> str | None:
     if "last" in norm_label and "casing" in norm_label and "mtvd" in norm_label:
         return "depth_last_casing_mtvd"
 
-    # plain "depth mmd/mtvd"
+     
     if norm_label.startswith("depth") and "mmd" in norm_label and "kick" not in norm_label and "formation" not in norm_label and "last" not in norm_label:
         return "depth_mmd"
     if norm_label.startswith("depth") and "mtvd" in norm_label and "kick" not in norm_label and "formation" not in norm_label and "last" not in norm_label:
@@ -107,7 +106,7 @@ class SummaryRightTableParser:
 
         rows = group_rows(rec_texts, rec_boxes, row_threshold=row_threshold)
 
-        # reconstruct lines
+         
         lines: List[Tuple[int, str]] = []
         for y, parts in rows:
             lines.append((y, clean(" ".join(t for _, t in parts))))
@@ -133,7 +132,7 @@ class SummaryRightTableParser:
 
             label_txt, value_txt = split_label_value_row(txt)
 
-            # If we saw a "Label:" without value, and next line is just a number/text, attach.
+             
             if pending_field and (":" not in txt):
                 payload[pending_field] = parse_val(txt)
                 if debug:

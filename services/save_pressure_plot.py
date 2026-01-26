@@ -19,7 +19,7 @@ def save_pressure_plot(
     extracted: dict,
 ) -> int:
 
-    # --- 1. Basic validation ---
+     
     title = extracted.get("chart_title")
     if not title:
         raise ValueError("chart_title missing")
@@ -29,8 +29,7 @@ def save_pressure_plot(
         raise ValueError("data_points missing or empty")
 
     interpretation = extracted.get("interpretation")
-
-    # --- 1.5 Re-ingest safety (DELETE FIRST) ---
+     
     conn.execute(
         text("""
             DELETE FROM pressure_plot
@@ -40,7 +39,6 @@ def save_pressure_plot(
         {"source_key": source_key},
     )
 
-    # --- 2. Insert plot ---
     plot_id = conn.execute(
         text("""
             INSERT INTO pressure_plot
@@ -57,7 +55,7 @@ def save_pressure_plot(
         },
     ).scalar_one()
 
-    # --- 3. Clean + collect wells ---
+     
     wells = []
     seen = set()
     cleaned_points = []
@@ -80,7 +78,7 @@ def save_pressure_plot(
         if well not in wells:
             wells.append(well)
 
-    # --- 4. Insert series ---
+     
     series_id_map = {}
 
     for well in wells:
@@ -94,7 +92,7 @@ def save_pressure_plot(
         ).scalar_one()
         series_id_map[well] = series_id
 
-    # --- 5. Insert points ---
+     
     order = 0
     for p in cleaned_points:
         well = p["group_name"]

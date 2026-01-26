@@ -43,10 +43,10 @@ def _last_header_slug_on_page(layout_ocr: Dict[str, Any]) -> str | None:
     items = _get_items(layout_ocr)
     headers = [it for it in items if it.get("label") == "section_header"]
 
-    # sort by reading order (top -> bottom, left -> right)
+     
     headers = sorted(headers, key=lambda it: (float(it.get("y1", 0.0)), float(it.get("x1", 0.0))))
 
-    # find the last header that has real text
+     
     for h in reversed(headers):
         txt = (h.get("ocr_text") or "").strip()
         if txt:
@@ -101,14 +101,12 @@ def run_paddle_for_all_tables(
         layout_items = _get_items(layout)
         ocr_items_by_idx = _ocr_by_idx(layout_ocr)
 
-        # collect tables
+         
         tables = [it for it in layout_items if it.get("label") == "table"]
         debug_out["tables_total"] += len(tables)
 
-        # group by linked header text/slug
         by_section: Dict[str, List[Dict[str, Any]]] = {}
-
-        # Determine first table on this page (reading order)
+         
         tables_sorted = sorted(tables, key=lambda it: (float(it.get("y1", 0.0)), float(it.get("x1", 0.0))))
         first_table_idx = int(tables_sorted[0]["idx"]) if tables_sorted else None
 
@@ -116,14 +114,14 @@ def run_paddle_for_all_tables(
             header_text = _header_text_for_table(t, ocr_items_by_idx)
             slug = _slugify(header_text)
 
-            # If no header text, try continuation logic
+             
             if slug == "unknown_section" and prev_page_last_slug:
-                # if linked header has no OCR text, it's basically "floating"
+                 
                 hdr_text = _header_text_for_idx(t.get("linked_header_idx"), ocr_items_by_idx)
 
                 is_first_table = (first_table_idx is not None and int(t.get("idx", -1)) == first_table_idx)
 
-                # continuation heuristic: first table OR empty header text
+                 
                 if is_first_table or not hdr_text:
                     slug = prev_page_last_slug
 
@@ -132,9 +130,9 @@ def run_paddle_for_all_tables(
         page_debug = {"page": page_dir.name, "sections": {}}
 
         for section_slug, section_tables in by_section.items():
-            # ---- Summary Report compatibility path ----
+             
             if section_slug == "summary_report" and len(section_tables) == 3:
-                # Store as you already do: /summary_tables/{left,middle,right}
+                 
                 section_tables_sorted = _sort_tables_left_mid_right(section_tables)
                 roles = ["left", "middle", "right"]
                 base_dir = page_dir / "summary_tables"
@@ -142,13 +140,13 @@ def run_paddle_for_all_tables(
                 for role, t in zip(roles, section_tables_sorted):
                     crop_path = Path(t.get("crop_path", ""))
                     if not crop_path:
-                        # fallback: attempt to resolve from crops folder using idx naming if you store it
+                         
                         debug_out["warnings"].append({"page": page_dir.name, "reason": "table missing crop_path"})
                         continue
 
                     out_dir = base_dir / role
 
-                    # deterministic skip: if folder already has a json
+                     
                     if skip_if_exists and any(out_dir.glob("*.json")):
                         debug_out["tables_skipped"] += 1
                         continue
@@ -161,8 +159,7 @@ def run_paddle_for_all_tables(
                     "mode": "summary_tables(left/middle/right)",
                 }
                 continue
-
-            # ---- General case: one folder per table ----
+             
             sec_base = page_dir / "section_tables" / section_slug
             sec_base.mkdir(parents=True, exist_ok=True)
 
@@ -171,8 +168,7 @@ def run_paddle_for_all_tables(
                 if not crop_path:
                     debug_out["warnings"].append({"page": page_dir.name, "reason": "table missing crop_path"})
                     continue
-
-                # Use table idx for deterministic folder
+                 
                 table_idx = t.get("idx")
                 table_key = f"table_{int(table_idx):03d}" if table_idx is not None else crop_path.stem
                 out_dir = sec_base / table_key

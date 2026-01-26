@@ -6,14 +6,13 @@ class TruncateDDRAction:
 
     def execute(self):
         with self.engine.begin() as conn:
-            # The CASCADE keyword is the most robust way to handle multiple foreign keys
+             
             conn.execute(text("TRUNCATE TABLE ddr_documents RESTART IDENTITY CASCADE;"))
 
 class TruncatePressureTimePlotsAction:
     """
     Truncates all Pressure vs Time (Offset Wells) plot data.
     """
-
     def __init__(self, engine):
         self.engine = engine
 
@@ -30,12 +29,10 @@ class TruncatePressureTimePlotsAction:
                 )
             )
 
-
 class TruncatePressureProfilePlotsAction:
     """
     Truncates all Pressure vs Depth (Pressure Profile) plot data.
     """
-
     def __init__(self, engine):
         self.engine = engine
 

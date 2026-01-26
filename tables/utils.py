@@ -20,19 +20,14 @@ def coerce_timestamp(v: Any) -> Optional[str]:
 
     s = str(v).strip()
 
-    # Reject pure year (still unsafe)
     if re.fullmatch(r"\d{4}", s):
         return None
 
-    # Normalize single-digit month/day
-    # 2023-6-4 -> 2023-06-04
     m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
     if m:
         y, mo, d = m.groups()
         return f"{y}-{int(mo):02d}-{int(d):02d}"
-
-    # Normalize date + time without leading zeros
-    # 2023-6-4 8:3 -> 2023-06-04 08:03
+     
     m = re.fullmatch(
         r"(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?",
         s
@@ -44,15 +39,13 @@ def coerce_timestamp(v: Any) -> Optional[str]:
             f"{int(hh):02d}:{int(mm):02d}"
             + (f":{int(ss):02d}" if ss else "")
         )
-
-    # Accept already well-formed ISO strings
+     
     if re.fullmatch(
         r"\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?",
         s
     ):
         return s
 
-    # DD/MM/YYYY or DD.MM.YYYY → ISO
     m = re.fullmatch(r"(\d{1,2})[./](\d{1,2})[./](\d{4})", s)
     if m:
         d, mo, y = m.groups()
@@ -63,7 +56,7 @@ def coerce_timestamp(v: Any) -> Optional[str]:
 def coerce_summary_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(payload)
 
-    # timestamps
+     
     for k in TS_FIELDS:
         if k in out:
             out[k] = coerce_timestamp(out[k])
@@ -74,19 +67,16 @@ def parse_val(v: str):
     if not v:
         return None
     
-    # Preserve ISO-like date/timestamp patterns
     if re.match(r"^\d{4}-\d{1,2}-\d{1,2}", v):
         return v
     
-    # Preserve DD/MM/YYYY or DD.MM.YYYY patterns
     if re.match(r"^\d{1,2}[./]\d{1,2}[./]\d{4}", v):
         return v
-    
-    # pure numeric
+
+     
     if re.fullmatch(r"-?\d+(\.\d+)?", v):
         return float(v) if "." in v else int(v)
-    
-    # first numeric inside
+     
     m = re.search(r"-?\d+(\.\d+)?", v)
     if m:
         s = m.group(0)
@@ -147,6 +137,6 @@ def split_label_value_row(row_text: str) -> Tuple[str, str]:
 
 def normalize_label(s: str) -> str:
     s = clean(s).replace("：", ":")
-    s = re.sub(r"\([^)]*\)", "", s)  # removes "(m/h)" and "()"
+    s = re.sub(r"\([^)]*\)", "", s)   
     s = s.rstrip(":").strip().lower()
     return s

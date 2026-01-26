@@ -10,9 +10,7 @@ import pdfplumber
 from pdf2image import convert_from_path
 import random
 
-# ---------------------------
-# CONFIG
-# ---------------------------
+
 PDF_FOLDER = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000"
 PDF_SAMPLE_SIZE = 200
 PDF_SAMPLE_SEED = 42
@@ -21,12 +19,11 @@ PDF_PATH = r"C:\Users\Yoked\Desktop\EIgroup 2nd try\PDF_version_1000\15_9_19_ST2
 POPPLER_BIN = r"C:\Users\Yoked\Desktop\DDR Processor\poppler-25.12.0\Library\bin"
 DPI = 320
 
-OUT_ROOT = Path("dataset")               # output dataset root
-SPLIT = "train"                          # keep "train" for now; you can add val split later
-SAVE_DEBUG = True                        # saves debug images with bboxes drawn
+OUT_ROOT = Path("dataset")                
+SPLIT = "train"                           
+SAVE_DEBUG = True                         
 DEBUG_DIR = OUT_ROOT / "debug"
-
-# Your final YOLO class list (order matters => class_id)
+ 
 CLASSES = [
     "table",
     "figure",
@@ -38,33 +35,22 @@ CLASSES = [
 
 CLASS_TO_ID: Dict[str, int] = {name: i for i, name in enumerate(CLASSES)}
 
-# ---------------------------
-# TYPES
-# ---------------------------
-
-PdfBBox = Tuple[float, float, float, float]     # (x0, top, x1, bottom) in PDF points
-PixBBox = Tuple[int, int, int, int]             # (x0, y0, x1, y1) in pixels
-
+PdfBBox = Tuple[float, float, float, float]      
+PixBBox = Tuple[int, int, int, int]              
 
 @dataclass
 class Detection:
     class_name: str
     pdf_bbox: PdfBBox
-    score: float = 1.0  # optional, for later extensions
-
+    score: float = 1.0   
 
 DetectorFn = Callable[[pdfplumber.page.Page], List[Detection]]
-
-# ---------------------------
-# COORDINATE HELPERS
-# ---------------------------
 
 def pdf_bbox_to_pixel_bbox(pdf_bbox: PdfBBox, dpi: int) -> PixBBox:
     """Convert PDF points (72 dpi) bbox to pixel bbox at render dpi."""
     x0, top, x1, bottom = pdf_bbox
     s = dpi / 72.0
     return (int(x0 * s), int(top * s), int(x1 * s), int(bottom * s))
-
 
 def clip_pixel_bbox(b: PixBBox, img_w: int, img_h: int) -> Optional[PixBBox]:
     """Clip bbox to image bounds; return None if invalid after clipping."""
@@ -77,7 +63,6 @@ def clip_pixel_bbox(b: PixBBox, img_w: int, img_h: int) -> Optional[PixBBox]:
         return None
     return (x0, y0, x1, y1)
 
-
 def pixel_bbox_to_yolo(b: PixBBox, img_w: int, img_h: int) -> Tuple[float, float, float, float]:
     """Convert pixel xyxy bbox to YOLO normalized (xc, yc, w, h)."""
     x0, y0, x1, y1 = b
@@ -87,9 +72,6 @@ def pixel_bbox_to_yolo(b: PixBBox, img_w: int, img_h: int) -> Tuple[float, float
     yc = y0 + bh / 2.0
     return (xc / img_w, yc / img_h, bw / img_w, bh / img_h)
 
-# ---------------------------
-# TEXT-LINE DETECTION HELPERS
-# ---------------------------
 
 def _same_line_words(words: List[dict], anchor_top: float, y_tol: float) -> List[dict]:
     """Return words whose 'top' is within y_tol of anchor_top."""
@@ -161,7 +143,7 @@ def group_words_into_lines(words: List[dict], y_tol: float = 3.0) -> List[List[d
     if not words:
         return []
 
-    # Sort by vertical then horizontal
+     
     words_sorted = sorted(words, key=lambda w: (w["top"], w["x0"]))
 
     lines: List[List[dict]] = []
@@ -177,15 +159,15 @@ def group_words_into_lines(words: List[dict], y_tol: float = 3.0) -> List[List[d
         if abs(w["top"] - current_top) <= y_tol:
             current.append(w)
         else:
-            # finalize old line
+             
             current = sorted(current, key=lambda ww: ww["x0"])
             lines.append(current)
 
-            # start new line
+             
             current = [w]
             current_top = w["top"]
 
-    # finalize last line
+     
     current = sorted(current, key=lambda ww: ww["x0"])
     lines.append(current)
 
@@ -194,12 +176,12 @@ def group_words_into_lines(words: List[dict], y_tol: float = 3.0) -> List[List[d
 def clip_table_at_next_section_header(
     table_bbox: PdfBBox,
     header_bboxes: List[PdfBBox],
-    min_sep: float = 15.0,   # header must be at least this far below table top
-    margin: float = 2.0,     # leave small gap above header
+    min_sep: float = 15.0,    
+    margin: float = 2.0,      
 ) -> PdfBBox:
     x0, top, x1, bottom = table_bbox
 
-    # headers whose TOP lies inside the table vertically (and is not just barely below top)
+     
     candidates = [
         hb for hb in header_bboxes
         if (hb[1] > top + min_sep) and (hb[1] < bottom - min_sep)
@@ -207,7 +189,7 @@ def clip_table_at_next_section_header(
     if not candidates:
         return table_bbox
 
-    next_h = min(candidates, key=lambda hb: hb[1])  # nearest header below
+    next_h = min(candidates, key=lambda hb: hb[1])   
     new_bottom = max(top + 5.0, next_h[1] - margin)
     return (x0, top, x1, new_bottom)
 
@@ -266,7 +248,7 @@ def drop_container_boxes(
                 child_count += 1
 
         if child_count >= min_children and bbox_area(b) > area_mult * med:
-            # likely a merged "super-table"
+             
             continue
 
         kept.append(b)
@@ -323,7 +305,7 @@ def tighten_bbox_to_words(
     """
     hit = words_intersect_bbox(page, bbox)
     if not hit:
-        return bbox  # nothing to tighten with
+        return bbox   
 
     x0 = min(w["x0"] for w in hit)
     x1 = max(w["x1"] for w in hit)
@@ -337,7 +319,7 @@ def is_runaway_table_bbox(page: pdfplumber.page.Page, bbox: PdfBBox) -> bool:
     """Heuristic: bbox is probably wrong if it clamps to page edges / too tall."""
     x0, top, x1, bottom = bbox
     h = bottom - top
-    # touches edges OR covers most of page height
+     
     return (top <= 1.0) or (bottom >= page.height - 1.0) or (h >= 0.70 * page.height)
 
 
@@ -376,7 +358,7 @@ def extract_words_clean(page: pdfplumber.page.Page, tol: float = 2.5, extra_attr
     NOTE: We do NOT use dedupe_chars here because it can create inconsistent results.
     """
     extra_attrs = extra_attrs or ["size", "fontname"]
-    # Remove dedupe_chars - let collapse_doubled_token handle it
+     
     words = page.extract_words(extra_attrs=extra_attrs)
     
     for w in words:
@@ -395,28 +377,28 @@ def resolve_nested_detections(detections: List[Detection], iou_threshold: float 
     if not detections:
         return []
 
-    # Sort by area descending so we process larger boxes first
+     
     detections = sorted(detections, key=lambda d: bbox_area(d.pdf_bbox), reverse=True)
     keep = []
 
     for i, det_heavy in enumerate(detections):
         is_redundant = False
         for j, det_kept in enumerate(keep):
-            # Calculate IoU or "Containment Ratio"
+             
             iou = bbox_iou(det_heavy.pdf_bbox, det_kept.pdf_bbox)
             
-            # If they overlap significantly, we consider them the same object
+             
             if iou > iou_threshold:
                 is_redundant = True
                 break
             
-            # Additional check: Is det_heavy completely inside det_kept?
-            # (Using a small margin of error)
+             
+             
             h_box = det_heavy.pdf_bbox
             k_box = det_kept.pdf_bbox
             if (h_box[0] >= k_box[0] - 2 and h_box[1] >= k_box[1] - 2 and
                 h_box[2] <= k_box[2] + 2 and h_box[3] <= k_box[3] + 2):
-                # If the smaller one is inside a 'table' class, it's redundant
+                 
                 if det_kept.class_name == "table":
                     is_redundant = True
                     break
@@ -436,10 +418,6 @@ def get_random_pdf_sample(folder_path: str, sample_size: int = 150, seed: int = 
     random.seed(seed)
     sampled_pdfs = random.sample(all_pdfs, sample_size)
     return sorted(sampled_pdfs)
-
-# ---------------------------
-# DETECTORS (ADD MORE LIKE THIS)
-# ---------------------------
 
 def get_section_headers_with_titles(page: pdfplumber.page.Page, y_tol: float = 3.0, padding: float = 1.5):
     words = extract_words_clean(page, tol=2.5, extra_attrs=["size", "fontname"])
@@ -463,14 +441,13 @@ def get_section_headers_with_titles(page: pdfplumber.page.Page, y_tol: float = 3
         bbox = _expand_bbox((x0, top, x1, bottom), page.width, page.height, padding=padding)
         out.append((matched, bbox))
 
-    out.sort(key=lambda x: x[1][1])  # sort by top
+    out.sort(key=lambda x: x[1][1])   
     return out
-
 
 def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -> List[Detection]:
     p = page.dedupe_chars(tolerance=1)
 
-    # get section headers on this page (cheap, and avoids crossing sections)
+     
     header_boxes = [d.pdf_bbox for d in detect_section_headers(page, y_tol=3.0, padding=1.5)]
 
     table_settings = {
@@ -486,13 +463,13 @@ def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -
 
     bboxes: List[PdfBBox] = []
 
-    # run BOTH strategies always
+     
     for settings in (
         dict(table_settings, vertical_strategy="lines", horizontal_strategy="lines"),
     ):
         try:
             for t in p.find_tables(table_settings=settings):
-                bboxes.append(tuple(t.bbox))  # type: ignore
+                bboxes.append(tuple(t.bbox))   
         except Exception:
             pass
 
@@ -503,18 +480,18 @@ def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -
     fixed: List[PdfBBox] = []
 
     for b in bboxes:
-        # 1) stop tables from crossing into a new section
+         
         b = clip_table_at_next_section_header(b, header_boxes, min_sep=15.0, margin=2.0)
 
-        # 2) drop “almost whole page” tables
+         
         if (bbox_area(b) / page_area) > 0.85:
             continue
 
-        # 3) your runaway fix (optional)
+         
         if is_runaway_table_bbox(page, b):
             b = tighten_bbox_to_words(page, b, padding=1.0)
 
-        # 4) final expand
+         
         b = _expand_bbox(b, page.width, page.height, padding=padding)
         fixed.append(b)
 
@@ -525,9 +502,9 @@ def detect_tables_pdfplumber(page: pdfplumber.page.Page, padding: float = 2.0) -
 def detect_wellbore_field(page: pdfplumber.page.Page) -> List[Detection]:
     bbox = find_line_segment_bbox(
         page,
-        start_pattern=r"wellbore", # Simplified: just look for the word
-        stop_pattern=r"period",    # Look for the start of the next label
-        y_tol=4.0,                 # Keep it generous
+        start_pattern=r"wellbore",  
+        stop_pattern=r"period",     
+        y_tol=4.0,                  
         padding=1,
     )
     if bbox is None:
@@ -542,7 +519,7 @@ def detect_period_field(page: pdfplumber.page.Page) -> List[Detection]:
     bbox = find_line_segment_bbox(
         page,
         start_pattern=r"Period:?",
-        stop_pattern=None,   # None => go to end of line
+        stop_pattern=None,    
         y_tol=3.0,
         padding=1.5,
     )
@@ -566,7 +543,7 @@ SECTION_TITLES = [
     "Casing Liner Tubing",
 ]
 
-# normalized targets for robust matching
+ 
 SECTION_TITLES_NORM = [t.lower() for t in SECTION_TITLES]
 
 def detect_section_headers(page: pdfplumber.page.Page, y_tol: float = 3.0, padding: float = 1.5) -> List[Detection]:
@@ -583,7 +560,7 @@ def detect_section_headers(page: pdfplumber.page.Page, y_tol: float = 3.0, paddi
         text = line_to_text(line_words)
         text_norm = text.lower()
 
-        # Match any known title as substring (handles minor spacing differences)
+         
         matched = None
         for target in SECTION_TITLES_NORM:
             if target in text_norm:
@@ -593,7 +570,7 @@ def detect_section_headers(page: pdfplumber.page.Page, y_tol: float = 3.0, paddi
         if not matched:
             continue
 
-        # Union bbox over the entire line (covers the full header text/bar region)
+         
         x0 = min(w["x0"] for w in line_words)
         x1 = max(w["x1"] for w in line_words)
         top = min(w["top"] for w in line_words)
@@ -611,18 +588,18 @@ def detect_summary_plain_text(
 ) -> List[Detection]:
     detections: List[Detection] = []
     
-    # 1. Check if headers are even being detected
+     
     headers_with_titles = get_section_headers_with_titles(page, y_tol=y_tol, padding=padding)
 
     headers_with_titles.sort(key=lambda x: x[1][1])
     words = extract_words_clean(page, tol=2.5, extra_attrs=["size", "fontname"])
     
-    # 2. Test the keyword matching
+     
     for i, (title, header_bbox) in enumerate(headers_with_titles):
         t_lower = title.lower()
         
-        # Check if we are even identifying the summary section
-        # NEW LOGIC: Only matches the specific activity summary sections
+         
+         
         is_activity_summary = "summary" in t_lower and ("activities" in t_lower or "planned" in t_lower)
 
         if not is_activity_summary:
@@ -631,17 +608,17 @@ def detect_summary_plain_text(
         header_bottom = header_bbox[3]
         next_header_top = headers_with_titles[i + 1][1][1] if i + 1 < len(headers_with_titles) else page.height
                 
-        # 3. Inspect the words in that specific Y-range
+         
         content_words = []
         for w in words:
             if w["top"] > header_bottom and w["top"] < next_header_top:
                 content_words.append(w)
             elif w["top"] <= header_bottom:
-                # This word is "above" the summary (likely part of the header)
+                 
                 pass 
 
         if not content_words:
-            # Legit case: empty summary section
+             
             continue
         
         x0 = min(w["x0"] for w in content_words)
@@ -658,7 +635,7 @@ def detect_one_row_tables(
     page: pdfplumber.page.Page,
     y_tol: float = 3.0,
     padding: float = 1.0,
-    min_columns: int = 3,  # minimum columns to consider it a table
+    min_columns: int = 3,   
 ) -> List[Detection]:
     """
     Detect one-row tables by finding:
@@ -668,10 +645,10 @@ def detect_one_row_tables(
     """
     detections: List[Detection] = []
     
-    # Get section headers with titles
+     
     headers_with_titles = get_section_headers_with_titles(page, y_tol=y_tol, padding=padding)
     
-    # Target sections that typically have one-row tables
+     
     target_sections = [
         "survey station",
         "lithology information",
@@ -679,13 +656,13 @@ def detect_one_row_tables(
         "pore pressure", 
         "bit record",
         "equipment failure information",
-        "casing liner tubing", # sometimes one row
+        "casing liner tubing",  
     ]
     
-    # Sort headers by vertical position
+     
     headers_with_titles.sort(key=lambda x: x[1][1])
     
-    # Extract all words
+     
     words = extract_words_clean(page, tol=2.5, extra_attrs=["size", "fontname"])
     lines = group_words_into_lines(words, y_tol=y_tol)
     
@@ -695,12 +672,12 @@ def detect_one_row_tables(
         
         header_bottom = header_bbox[3]
         
-        # Find next section header
+         
         next_header_top = page.height
         if i + 1 < len(headers_with_titles):
             next_header_top = headers_with_titles[i + 1][1][1]
         
-        # Get lines between this header and next
+         
         content_lines = [
             line for line in lines
             if line[0]["top"] > header_bottom + 2
@@ -708,29 +685,29 @@ def detect_one_row_tables(
         ]
         
         if len(content_lines) < 2:
-            # Need at least header row + one data row
+             
             continue
         
-        # First line should be column headers, second line should be data
+         
         header_line = content_lines[0]
         data_line = content_lines[1]
         
-        # Check if header line has multiple "columns" (words spread horizontally)
+         
         if len(header_line) < min_columns:
             continue
         
-        # Check if data line has similar number of elements
-        if len(data_line) < min_columns - 1:  # allow some flexibility
+         
+        if len(data_line) < min_columns - 1:   
             continue
         
-        # Create bbox that encompasses both header and data rows
+         
         all_words = header_line + data_line
         x0 = min(w["x0"] for w in all_words)
         x1 = max(w["x1"] for w in all_words)
         top = min(w["top"] for w in all_words)
         bottom = max(w["bottom"] for w in all_words)
         
-        # Expand with padding
+         
         bbox = _expand_bbox(
             (x0, top, x1, bottom),
             page.width,
@@ -741,14 +718,7 @@ def detect_one_row_tables(
         detections.append(Detection(class_name="table", pdf_bbox=bbox))
     
     return detections
-# Example stub to show how you'd add another detector later:
-# def detect_period_field(page: pdfplumber.page.Page) -> List[Detection]:
-#     bbox = find_line_segment_bbox(page, start_pattern=r"Period:?", stop_pattern=None, y_tol=3.0, padding=2.5)
-#     return [] if bbox is None else [Detection("period_field", bbox)]
-
-# ---------------------------
-# DATASET WRITER
-# ---------------------------
+ 
 
 def ensure_out_dirs(root: Path, split: str) -> Tuple[Path, Path]:
     img_dir = root / "images" / split
@@ -767,7 +737,6 @@ def render_all_pages(pdf_path: str, dpi: int, poppler_bin: Optional[str]) -> Lis
         dpi=dpi,
         poppler_path=poppler_bin,
     )
-
 
 def write_yolo_labels(label_path: Path, detections_yolo: List[str]) -> None:
     """Write YOLO label lines to file (or empty file if none)."""
@@ -796,7 +765,6 @@ def build_dataset_from_pdf(
 ) -> None:
     img_dir, lbl_dir = ensure_out_dirs(out_root, split)
 
-    # Render all pages once
     images = render_all_pages(pdf_path, dpi=dpi, poppler_bin=poppler_bin)
 
     with pdfplumber.open(pdf_path) as pdf:
@@ -810,20 +778,20 @@ def build_dataset_from_pdf(
             pil_img = images[i]
             img_w, img_h = pil_img.size
 
-            # run all detectors on this page
+             
             detections: List[Detection] = []
             for det_fn in detectors:
                 detections.extend(det_fn(page))
 
             detections = resolve_nested_detections(detections, iou_threshold=0.6)
 
-            # convert to YOLO label lines
+             
             yolo_lines: List[str] = []
             debug_boxes: List[Tuple[str, PixBBox]] = []
 
             for det in detections:
                 if det.class_name not in CLASS_TO_ID:
-                    # Skip unknown classes (or raise error)
+                     
                     continue
 
                 pix_bbox = pdf_bbox_to_pixel_bbox(det.pdf_bbox, dpi=dpi)
@@ -838,31 +806,28 @@ def build_dataset_from_pdf(
                 if SAVE_DEBUG:
                     debug_boxes.append((det.class_name, pix_bbox))
 
-            # file names
+             
             stem = f"{Path(pdf_path).stem}_p{page_num:03d}"
             img_path = img_dir / f"{stem}.png"
             lbl_path = lbl_dir / f"{stem}.txt"
 
-            # save image + labels
+             
             pil_img.save(img_path)
             write_yolo_labels(lbl_path, yolo_lines)
 
-            # debug overlay
+             
             if SAVE_DEBUG and debug_boxes:
                 dbg_path = DEBUG_DIR / f"{stem}_debug.png"
                 draw_debug(pil_img, debug_boxes, dbg_path)
 
             print(f"[{page_num:03d}/{n_pages:03d}] saved {img_path.name} + {lbl_path.name} | labels={len(yolo_lines)}")
 
-
-# ---------------------------
-# MAIN
-# ---------------------------
+ 
 def test_single_pdf(pdf_path: str, detectors: List[DetectorFn]):
     """Runs the full pipeline on just one specific PDF for debugging."""
     print(f"\n🧪 TEST MODE: Processing single file: {pdf_path}")
     
-    # We use a special 'test_run' split folder to keep it separate from your dataset
+     
     build_dataset_from_pdf(
         pdf_path=pdf_path,
         out_root=OUT_ROOT,
@@ -882,16 +847,15 @@ if __name__ == "__main__":
         detect_one_row_tables,
         detect_summary_plain_text,
     ]
-
-    # --- TOGGLE THIS ---
+  
     RUN_SINGLE_TEST = False
-    # -------------------
+     
 
     if RUN_SINGLE_TEST:
-        # Uses the PDF_PATH defined in your CONFIG section
+         
         test_single_pdf(PDF_PATH, detectors)
     else:
-        # ORIGINAL BATCH LOGIC
+         
         pdf_files = get_random_pdf_sample(
             folder_path=PDF_FOLDER,
             sample_size=PDF_SAMPLE_SIZE,

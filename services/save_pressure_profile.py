@@ -13,7 +13,7 @@ def save_pressure_profile(
     Returns pressure_profile_plot.id
     """
 
-    # --- 1. Basic validation ---
+     
     title = extracted.get("chart_title")
     if not title:
         raise ValueError("chart_title missing")
@@ -23,8 +23,7 @@ def save_pressure_profile(
         raise ValueError("curves missing or empty")
 
     interpretation = extracted.get("interpretation")
-
-    # --- 1.5 Re-ingest safety ---
+     
     conn.execute(
         text("""
             DELETE FROM pressure_profile_plot
@@ -33,7 +32,7 @@ def save_pressure_profile(
         {"source_key": source_key},
     )
 
-    # --- 2. Insert plot ---
+     
     plot_id = conn.execute(
         text("""
             INSERT INTO pressure_profile_plot
@@ -50,7 +49,7 @@ def save_pressure_profile(
         },
     ).scalar_one()
 
-    # --- 3. Insert curves ---
+     
     curve_id_map = {}
 
     for curve in curves:
@@ -74,7 +73,7 @@ def save_pressure_profile(
 
         curve_id_map[name] = curve_id
 
-    # --- 4. Insert points ---
+     
     seen = set()
     order = 0
 

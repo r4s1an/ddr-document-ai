@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-# Canonical targets (you can extend with additional variants if needed)
+ 
 TARGET_HEADERS = {
     "activities_24h_text": "summary of activities 24 hours",
     "planned_24h_text": "summary of planned activities 24 hours",
@@ -31,7 +31,7 @@ def _normalize_header(s: str) -> str:
     if not s:
         return ""
     s = s.lower()
-    # remove anything that's not alnum (keep digits)
+     
     s = re.sub(r"[^a-z0-9]+", "", s)
     return s
 
@@ -76,9 +76,9 @@ def _items_from_page(layout_path: Path, layout_ocr_path: Path) -> List[LayoutIte
     layout = _load_json(layout_path)
     layout_ocr = _load_json(layout_ocr_path)
 
-    # Common patterns:
-    # - either files are lists
-    # - or dict with key "items"
+     
+     
+     
     layout_items = layout["items"] if isinstance(layout, dict) and "items" in layout else layout
     ocr_items = layout_ocr["items"] if isinstance(layout_ocr, dict) and "items" in layout_ocr else layout_ocr
 
@@ -86,7 +86,7 @@ def _items_from_page(layout_path: Path, layout_ocr_path: Path) -> List[LayoutIte
         raise ValueError(f"Unexpected JSON structure in {layout_path} / {layout_ocr_path}")
 
     if len(layout_items) != len(ocr_items):
-        # If lengths differ, try idx-based join
+         
         by_idx_ocr = {}
         for it in ocr_items:
             if isinstance(it, dict) and "idx" in it:
@@ -109,7 +109,7 @@ def _items_from_page(layout_path: Path, layout_ocr_path: Path) -> List[LayoutIte
             )
         return merged
 
-    # Otherwise assume same ordering
+     
     items: List[LayoutItem] = []
     for i, (it, oit) in enumerate(zip(layout_items, ocr_items)):
         idx = int(it.get("idx", i))
@@ -164,14 +164,14 @@ def extract_activity_summaries_from_processed_ddr(
     """
     processed_ddr_dir = Path(processed_ddr_dir)
 
-    # Accumulators across pages
+     
     collected: Dict[str, List[Tuple[Tuple[float, float], str]]] = {
         "activities_24h_text": [],
         "planned_24h_text": [],
     }
 
-    # For debugging: header_idx -> matched target
-    matched_headers_global: Dict[int, Tuple[str, float, str]] = {}  # header_idx: (target_key, score, raw_text)
+     
+    matched_headers_global: Dict[int, Tuple[str, float, str]] = {}   
 
     page_dirs = sorted([p for p in processed_ddr_dir.iterdir() if p.is_dir() and p.name.startswith("page_")])
 
@@ -183,10 +183,10 @@ def extract_activity_summaries_from_processed_ddr(
 
         items = _items_from_page(layout_path, layout_ocr_path)
 
-        # Index items by idx for quick lookup
+         
         by_idx: Dict[int, LayoutItem] = {it.idx: it for it in items}
 
-        # 1) Identify which section_header idx corresponds to target #1 or #2
+         
         header_target_for_idx: Dict[int, str] = {}
         for it in items:
             if it.label != "section_header":
@@ -196,7 +196,7 @@ def extract_activity_summaries_from_processed_ddr(
                 header_target_for_idx[it.idx] = target_key
                 matched_headers_global[it.idx] = (target_key, score, it.ocr_text)
 
-        # 2) Collect plain_text routed by linked_header_idx
+         
         for it in items:
             if it.label != "plain_text":
                 continue
@@ -211,14 +211,14 @@ def extract_activity_summaries_from_processed_ddr(
             if text is None:
                 continue
 
-            # Reading order key: top-to-bottom then left-to-right
+             
             order_key = (it.y1, it.x1)
             collected[target_key].append((order_key, text))
 
         if debug:
             print(f"[{page_dir.name}] matched headers: {header_target_for_idx}")
 
-    # 3) Sort + join with paragraph breaks
+     
     result: Dict[str, str] = {}
     for key in ("activities_24h_text", "planned_24h_text"):
         parts = sorted(collected[key], key=lambda t: (t[0][0], t[0][1]))

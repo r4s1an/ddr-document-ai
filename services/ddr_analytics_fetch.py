@@ -1,4 +1,4 @@
-# services/ddr_analytics_fetch.py
+ 
 from io import BytesIO
 import datetime
 from reportlab.lib.pagesizes import A4
@@ -58,7 +58,7 @@ def _read_many(engine, sql: str, params: dict) -> list[dict]:
         df = pd.read_sql(sql, conn, params=params)
     if df.empty:
         return []
-    df = df.fillna("")  # make LLM payload clean
+    df = df.fillna("")   
     return df.to_dict(orient="records")
 
 
@@ -71,12 +71,12 @@ def fetch_ddr_payload(engine, document_id: int) -> dict:
     params = {"id": document_id}
 
     payload = {
-        # Single-row tables
+         
         "document": _read_one(engine, "SELECT * FROM ddr_documents WHERE id = %(id)s", params),
         "activity_summary": _read_one(engine, "SELECT * FROM ddr_activity_summary WHERE document_id = %(id)s", params),
         "summary_report": _read_one(engine, "SELECT * FROM ddr_summary_report WHERE document_id = %(id)s", params),
 
-        # Multi-row tables (ordered where it matters)
+         
         "operations": _read_many(
             engine,
             """

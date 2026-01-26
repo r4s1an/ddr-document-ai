@@ -1,27 +1,21 @@
 import json
 import os
 from typing import Any, Dict, Optional
-
 import requests
 
 GEMINI_ENDPOINT_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash" 
 
-
-# Keep outputs deterministic
 DEFAULT_TEMPERATURE = 0.1
 DEFAULT_TOP_P = 1.0
 DEFAULT_TOP_K = 1
 DEFAULT_MAX_OUTPUT_TOKENS = 2048
 
-# Prevent huge prompts (esp. raw_json in plots)
 MAX_STR_CHARS = 8000
-MAX_LIST_ROWS_PER_QUERY = 200  # should already be limited in SQL, but we clamp again
-
+MAX_LIST_ROWS_PER_QUERY = 200   
 
 def _safe_json_dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), default=str)
-
 
 def _truncate_str(s: str, max_chars: int = MAX_STR_CHARS) -> str:
     if s is None:
@@ -30,7 +24,6 @@ def _truncate_str(s: str, max_chars: int = MAX_STR_CHARS) -> str:
     if len(s) <= max_chars:
         return s
     return s[:max_chars] + f"...(truncated,{len(s)} chars)"
-
 
 def _shrink_payload(obj: Any) -> Any:
     """
@@ -45,14 +38,14 @@ def _shrink_payload(obj: Any) -> Any:
         return _truncate_str(obj)
 
     if isinstance(obj, list):
-        # Clamp list size (important for rows)
+         
         out = obj[:MAX_LIST_ROWS_PER_QUERY]
         return [_shrink_payload(x) for x in out]
 
     if isinstance(obj, dict):
         out: Dict[str, Any] = {}
         for k, v in obj.items():
-            # Often the heavy stuff is in raw_json; force truncate if it is a string
+             
             if k in ("raw_json", "interpretation") and isinstance(v, str):
                 out[k] = _truncate_str(v)
             else:
@@ -60,7 +53,6 @@ def _shrink_payload(obj: Any) -> Any:
         return out
 
     return obj
-
 
 def _build_prompt(question: str, retrieved_payload: Dict[str, Any]) -> str:
     payload_small = _shrink_payload(retrieved_payload)
@@ -71,9 +63,8 @@ def _build_prompt(question: str, retrieved_payload: Dict[str, Any]) -> str:
         "Retrieved SQL payload (ground truth):\n"
         f"{_safe_json_dumps(payload_small)}\n\n"
         "Return ONE JSON object only with keys exactly:\n"
-        "answer, sql_used, tables_preview, assumptions_or_limits, followups\n"
+        "answer, assumptions_or_limits, followups\n"
     )
-
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
     """
@@ -86,14 +77,12 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
 
     s = text.strip()
 
-    # 1) strict parse
     try:
         obj = json.loads(s)
         return obj if isinstance(obj, dict) else None
     except Exception:
         pass
-
-    # 2) balanced-brace scan
+     
     start = s.find("{")
     if start == -1:
         return None
@@ -128,8 +117,8 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
                     obj = json.loads(candidate)
                     return obj if isinstance(obj, dict) else None
                 except Exception:
-                    # Continue scanning: maybe first object is invalid, later is valid
-                    # Start looking for next object
+                     
+                     
                     nxt = s.find("{", i + 1)
                     if nxt == -1:
                         return None
@@ -139,7 +128,6 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
                     esc = False
 
     return None
-
 
 def _validate_response_schema(obj: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -154,23 +142,13 @@ def _validate_response_schema(obj: Dict[str, Any]) -> Dict[str, Any]:
             "assumptions_or_limits": ["Model output was not a valid JSON object."],
             "followups": [],
         }
-
-    # Required keys
+     
     obj.setdefault("answer", "")
-    obj.setdefault("sql_used", [])
-    obj.setdefault("tables_preview", {})
     obj.setdefault("assumptions_or_limits", [])
     obj.setdefault("followups", [])
-
-    # Type normalizations
+     
     if not isinstance(obj["answer"], str):
         obj["answer"] = str(obj["answer"])
-
-    if not isinstance(obj["sql_used"], list):
-        obj["sql_used"] = []
-
-    if not isinstance(obj["tables_preview"], dict):
-        obj["tables_preview"] = {}
 
     if not isinstance(obj["assumptions_or_limits"], list):
         obj["assumptions_or_limits"] = [str(obj["assumptions_or_limits"])]
@@ -209,20 +187,19 @@ def generate_tag_answer(
     prompt_text = _build_prompt(question=question, retrieved_payload=retrieved_payload)
 
     system_text = (
-        "You are a Table-Augmented Generation (TAG) assistant. "
-        "You MUST return STRICT JSON ONLY. "
-        "No markdown. No explanations. No extra text. "
-        "Use keys exactly: answer, sql_used, tables_preview, assumptions_or_limits, followups."
-    )
+           "You are a read-only TAG assistant. "
+        "Return STRICT JSON ONLY. No markdown. No extra text. "
+        "Keys exactly: answer, assumptions_or_limits, followups. "
+        "Use ONLY the retrieved payload. If unclear, ask in followups.")
 
     body = {
-        # System instruction is a top-level field in REST examples
+         
         "system_instruction": {"parts": [{"text": system_text}]},
         "contents": [
             {"role": "user", "parts": [{"text": prompt_text}]}
         ],
         "generationConfig": {
-            # IMPORTANT: Gemini uses camelCase here
+             
             "responseMimeType": "application/json",
             "temperature": float(temperature),
             "topP": float(DEFAULT_TOP_P),
@@ -235,7 +212,7 @@ def generate_tag_answer(
         resp = requests.post(
             url,
             headers={
-                "x-goog-api-key": key,              # <— IMPORTANT (NOT Authorization: Bearer)
+                "x-goog-api-key": key,               
                 "Content-Type": "application/json",
             },
             json=body,
@@ -260,7 +237,7 @@ def generate_tag_answer(
             "followups": [],
         }
 
-    # Extract model text
+     
     try:
         text_out = data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception:
@@ -274,7 +251,7 @@ def generate_tag_answer(
 
     parsed = _extract_json_object(text_out)
 
-    # One deterministic retry if still non-JSON
+     
     if not parsed:
         try:
             body2 = dict(body)

@@ -1,4 +1,4 @@
-# actions/ingest_engineering_image.py
+ 
 from dataclasses import dataclass
 from pathlib import Path
 from AI.gemini_pressure_plot import extract_pressure_plot
@@ -12,7 +12,6 @@ class EngineeringImageResult:
     plot_type: str
     plot_id: int
 
-
 class IngestEngineeringImageAction:
     def __init__(self, engine, *, debug: bool = False):
         self.engine = engine
@@ -22,19 +21,18 @@ class IngestEngineeringImageAction:
 
         det = detect_plot_type_bytes(image_bytes, debug=self.debug)
 
-
         with self.engine.begin() as conn:
             if det.plot_type == PlotType.PRESSURE_VS_TIME:
 
                 extracted = extract_pressure_plot(image_bytes, mime_type)
-                plot_id = save_pressure_plot(conn, image_path=source_key, extracted=extracted)
+                plot_id = save_pressure_plot(conn, source_key=source_key, extracted=extracted)
 
                 return EngineeringImageResult(plot_type=det.plot_type.value, plot_id=plot_id)
 
             if det.plot_type == PlotType.PRESSURE_VS_DEPTH:
 
                 extracted = extract_pressure_profile(image_bytes, mime_type)
-                plot_id = save_pressure_profile(conn, image_path=source_key, extracted=extracted)
+                plot_id = save_pressure_profile(conn, source_key=source_key, extracted=extracted)
                 return EngineeringImageResult(plot_type=det.plot_type.value, plot_id=plot_id)
 
             raise RuntimeError(f"Unhandled plot type: {det.plot_type}")

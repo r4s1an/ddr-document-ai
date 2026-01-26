@@ -1,6 +1,5 @@
 import streamlit as st
 from pathlib import Path
-import json
 from services.tag_chat_orchestrator import run_tag_chat_turn
 from actions.ingest_engineering_image import IngestEngineeringImageAction
 from services.utils import AppServices, clear_dir_contents
@@ -15,10 +14,6 @@ import pandas as pd
 
 GEMINI_MODEL = "gemini-2.5-flash"
 
-# ------------------------------------------------------------------
-# App setup
-# ------------------------------------------------------------------
-
 st.set_page_config(page_title="DDR & Drilling Analytics Engine", layout="wide")
 st.title("DDR & Drilling Analytics Engine")
 st.markdown("##### Intelligent extraction and analysis for reports and graphical data.")
@@ -26,22 +21,15 @@ st.markdown("##### Intelligent extraction and analysis for reports and graphical
 services = AppServices()
 engine = services.get_engine()
 
-# ------------------------------------------------------------------
-# Processing mode selector
-# ------------------------------------------------------------------
-
 processing_mode = st.radio(
     "Select processing mode",
     options=[
         "DDR PDF Report",
         "Engineering Image",
-        "DDR Analytics",   # NEW
+        "DDR Analytics", 
     ],
 )
 
-# ------------------------------------------------------------------
-# Sidebar - model settings (DDR only)
-# ------------------------------------------------------------------
 custom_weights_path = None
 keep_processed_files = False
 
@@ -58,9 +46,6 @@ if processing_mode == "DDR PDF Report":
         value=False,
         help="If OFF, processed_ddr will be cleared automatically after a successful Process DDR."
     )
-# ------------------------------------------------------------------
-# DDR PDF PIPELINE
-# ------------------------------------------------------------------
 
 if processing_mode == "DDR PDF Report":
     st.subheader("Upload DDR PDF Report")
@@ -108,7 +93,6 @@ if processing_mode == "DDR PDF Report":
                 st.write("Period:", result.period_start, "→", result.period_end)
                 st.write("Metadata found on:", result.used_page)
 
-                # ✅ Auto cleanup AFTER success
                 if not keep_processed_files:
                     clear_dir_contents(out_dir)
                     st.info("processed_ddr cleared (auto-clean).")
@@ -116,10 +100,6 @@ if processing_mode == "DDR PDF Report":
             except Exception as e:
                 st.error("Failed during DDR processing.")
                 st.exception(e)
-
-# ------------------------------------------------------------------
-# ENGINEERING IMAGE PIPELINE (ENTRY POINT ONLY)
-# ------------------------------------------------------------------
 
 if processing_mode == "Engineering Image":
     st.subheader("Upload Engineering Image")
@@ -145,10 +125,9 @@ if processing_mode == "Engineering Image":
                 image_bytes = uploaded_image.getvalue()
                 image_name = uploaded_image.name
 
-                # Placeholder: backend image pipeline entry point
                 action = IngestEngineeringImageAction(engine, debug=True)
-                mime_type = uploaded_image.type  # "image/png" or "image/jpeg"
-                source_key = services.sha256_bytes(image_bytes)  # deterministic re-ingest key
+                mime_type = uploaded_image.type
+                source_key = services.sha256_bytes(image_bytes) 
 
                 result = action.execute(
                     image_bytes=image_bytes,
@@ -162,10 +141,6 @@ if processing_mode == "Engineering Image":
             except Exception as e:
                 st.error("Failed during image processing.")
                 st.exception(e)
-
-# ------------------------------------------------------------------
-# DDR ANALYTICS (SQL -> Gemini -> PDF)  [UI ONLY]
-# ------------------------------------------------------------------
 
 if processing_mode == "DDR Analytics":
     st.subheader("DDR Analytics (PDF only)")
@@ -191,8 +166,6 @@ if processing_mode == "DDR Analytics":
     col1, col2 = st.columns([1, 2])
     with col1:
         run_btn = st.button("Run Analytics & Generate PDF", key="run_ddr_analytics_btn")
-    with col2:
-        st.caption("This will: fetch SQL rows → call Gemini → build reportlab PDF → provide download.")
 
     if run_btn:
         with st.spinner("Fetching structured data from SQL..."):
@@ -215,15 +188,12 @@ if processing_mode == "DDR Analytics":
         )
 
     st.divider()
-    st.subheader("TAG Chatbot (SQL-grounded, read-only)")
+    st.subheader("TAG Chatbot")
 
     # Chat state
     if "tag_messages" not in st.session_state:
-        st.session_state.tag_messages = []  # list of dicts: {"role": "user"/"assistant", "content": dict}
+        st.session_state.tag_messages = [] 
 
-    # Context selectors (document_id + wellbore_name + date)
-    # We already have document_id from dropdown above.
-    # We'll also allow optional override filters.
     colA, colB, colC = st.columns([1, 1, 1])
 
     with colA:
@@ -249,52 +219,28 @@ if processing_mode == "DDR Analytics":
             help="Optional: used when question references a day. If empty, router may infer or ask."
         )
 
-    # Show chat history
     for msg in st.session_state.tag_messages:
         role = msg["role"]
-        content = msg["content"]  # dict (STRICT JSON response or user payload)
+        content = msg["content"]
         with st.chat_message(role):
             if role == "user":
                 st.markdown(content["text"])
             else:
-                # assistant content is strict JSON
                 st.markdown(content.get("answer", ""))
 
-                with st.expander("SQL used"):
-                    st.json(content.get("sql_used", []))
-
-                with st.expander("Tables preview"):
-                    st.json(content.get("tables_preview", {}))
-
-                limits = content.get("assumptions_or_limits", [])
-                if limits:
-                    with st.expander("Assumptions / limits"):
-                        st.write(limits)
-
-                followups = content.get("followups", [])
-                if followups:
-                    st.markdown("**Follow-ups:**")
-                    for f in followups:
-                        st.caption(f"- {f}")
-
-    # User input
     user_text = st.chat_input("Ask about DDR operations, downtime, failures, gas readings...")
 
     if user_text:
-        # Append user message
         st.session_state.tag_messages.append({
             "role": "user",
             "content": {"text": user_text}
         })
 
-        # Resolve overrides (keep UI-only)
         doc_id_override = int(chat_document_id) if chat_document_id else None
         wellbore_override = chat_wellbore_name.strip() or None
-        day_override = chat_day.isoformat() if chat_day else None  # pass as ISO date string
-
+        day_override = chat_day.isoformat() if chat_day else None 
         with st.spinner("Running TAG: routing → SQL → Gemini..."):
             try:
-                # Single orchestration call (backend module will do router + safe SQL + Gemini)
                 response_json = run_tag_chat_turn(
                     engine=engine,
                     question=user_text,
@@ -313,7 +259,6 @@ if processing_mode == "DDR Analytics":
                     "followups": []
                 }
 
-        # Append assistant message (strict JSON)
         st.session_state.tag_messages.append({
             "role": "assistant",
             "content": response_json
@@ -321,9 +266,6 @@ if processing_mode == "DDR Analytics":
 
         st.rerun()
 
-# ------------------------------------------------------------------
-# DDR Trends (Operations)
-# ------------------------------------------------------------------
 if processing_mode == "DDR Analytics":
     wellbore = st.text_input("Filter wellbore_name (optional)", value="")
 
@@ -332,7 +274,6 @@ if processing_mode == "DDR Analytics":
     if df.empty:
         st.warning("No data for this filter.")
     else:
-        # Ensure day is datetime for charts
         df["day"] = pd.to_datetime(df["day"])
 
         st.markdown("### Reliability / friction")
@@ -345,9 +286,6 @@ if processing_mode == "DDR Analytics":
         st.line_chart(df.set_index("day")[["npt_hours"]])
 
         st.dataframe(df)
-# ------------------------------------------------------------------
-# Maintenance - database
-# ------------------------------------------------------------------
 
 st.divider()
 st.subheader("Database maintenance")
