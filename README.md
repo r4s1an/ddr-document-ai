@@ -100,8 +100,6 @@ Summarize drilling activities for this reporting period
 Which operations caused the most downtime?
 Were there any abnormal gas readings?
 Show and explain the pressure–time trend across offset wells
-Compare ROP performance between these two sections
-What was the total mud loss last week?
 
 🔮 Research Directions & Future Work
 
