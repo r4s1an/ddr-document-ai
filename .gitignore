@@ -18,6 +18,8 @@ out_test/
 
 processed_ddr/
 
+runs/
+
 testing/
 
 paddle_ocr_playing/

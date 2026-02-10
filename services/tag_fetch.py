@@ -131,7 +131,6 @@ def run_one(engine: Engine, plan: Plan) -> Dict[str, Any]:
         "truncated": truncated,
     }
 
-
 def run_many(engine: Engine, plans: Sequence[Any]) -> Dict[str, Any]:
     """
     Execute many plans and return:

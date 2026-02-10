@@ -1,3 +1,16 @@
+"""
+DDR & Drilling Analytics Engine (Streamlit App)
+
+End-to-end system for:
+- Parsing Daily Drilling Reports (PDF)
+- Extracting structured tables and metadata via Vision + OCR
+- Ingesting engineering plots (pressure-time / pressure-depth)
+- Performing LLM-based analytics and reporting
+- Querying data via TAG (Text-Action-Graph) chatbot
+
+This file defines the UI orchestration layer only.
+"""
+
 import streamlit as st
 from pathlib import Path
 from services.tag_chat_orchestrator import run_tag_chat_turn

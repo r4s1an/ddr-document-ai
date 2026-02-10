@@ -26,31 +26,31 @@ def extract_pressure_plot(image_bytes: bytes, mime_type: str) -> dict:
     image_b64 = _encode_image_bytes(image_bytes)
 
     prompt = """
-Analyze this engineering pressure vs time plot.
+    Analyze this engineering pressure vs time plot.
 
-Rules:
-- Extract each visible data point exactly once
-- Do NOT repeat points
-- Do NOT invent values
-- If a value is unclear, omit it
+    Rules:
+    - Extract each visible data point exactly once
+    - Do NOT repeat points
+    - Do NOT invent values
+    - If a value is unclear, omit it
 
-Tasks:
-1. Extract pressure vs time data
-2. Identify well names from legend
-3. Provide a short interpretation
+    Tasks:
+    1. Extract pressure vs time data
+    2. Identify well names from legend
+    3. Provide a short interpretation
 
-Return STRICT JSON ONLY in this schema:
-{
-  "chart_title": "string",
-  "data_points": [
+    Return STRICT JSON ONLY in this schema:
     {
-      "x_value": "YYYY-MM",
-      "y_value": number,
-      "group_name": "Well name"
+    "chart_title": "string",
+    "data_points": [
+        {
+        "x_value": "YYYY-MM",
+        "y_value": number,
+        "group_name": "Well name"
+        }
+    ],
+    "interpretation": "string"
     }
-  ],
-  "interpretation": "string"
-}
 """
 
     payload = {

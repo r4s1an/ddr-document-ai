@@ -4,10 +4,6 @@ from __future__ import annotations
 from sqlalchemy import text
 from typing import Any, Dict, List
 
- 
- 
- 
-
 SQL_UPSERT_DDR_DOCUMENT = text("""
 INSERT INTO ddr_documents (
     source_filename,
@@ -156,7 +152,6 @@ UPDATE ddr_documents
 SET report_number = :rn
 WHERE id = :id
 """)
-
  
 
 SQL_DELETE_DDR_DRILLING_FLUID = text("""
@@ -189,9 +184,6 @@ DELETE FROM ddr_gas_reading_information
 WHERE document_id = :document_id
 """)
 
- 
- 
- 
 
 SQL_INSERT_DDR_DRILLING_FLUID = text("""
 INSERT INTO ddr_drilling_fluid (
